@@ -6,6 +6,7 @@ import DeleteTicketService from "../services/TicketServices/DeleteTicketService"
 import ListTicketsService from "../services/TicketServices/ListTicketsService";
 import ShowTicketService from "../services/TicketServices/ShowTicketService";
 import UpdateTicketService from "../services/TicketServices/UpdateTicketService";
+import CountTicketsByUserService from "../services/TicketServices/CountTicketsByUserService";
 import SendWhatsAppMessage from "../services/WbotServices/SendWhatsAppMessage";
 import ShowWhatsAppService from "../services/WhatsappService/ShowWhatsAppService";
 import formatBody from "../helpers/Mustache";
@@ -25,6 +26,7 @@ interface TicketData {
   status: string;
   queueId: number;
   userId: number;
+  notes: string;
 }
 
 export const index = async (req: Request, res: Response): Promise<Response> => {
@@ -39,6 +41,7 @@ export const index = async (req: Request, res: Response): Promise<Response> => {
   } = req.query as IndexQuery;
 
   const userId = req.user.id;
+  const userProfile = req.user.profile;
 
   let queueIds: number[] = [];
 
@@ -53,6 +56,7 @@ export const index = async (req: Request, res: Response): Promise<Response> => {
     date,
     showAll,
     userId,
+    userProfile,
     queueIds,
     withUnreadMessages
   });
@@ -61,9 +65,9 @@ export const index = async (req: Request, res: Response): Promise<Response> => {
 };
 
 export const store = async (req: Request, res: Response): Promise<Response> => {
-  const { contactId, status, userId }: TicketData = req.body;
+  const { contactId, status, userId, queueId }: TicketData = req.body;
 
-  const ticket = await CreateTicketService({ contactId, status, userId });
+  const ticket = await CreateTicketService({ contactId, status, userId, queueId });
 
   const io = getIO();
   io.to(ticket.status).emit("ticket", {
@@ -125,4 +129,12 @@ export const remove = async (
   });
 
   return res.status(200).json({ message: "ticket deleted" });
+};
+
+export const countByUser = async (
+  req: Request,
+  res: Response
+): Promise<Response> => {
+  const data = await CountTicketsByUserService();
+  return res.status(200).json(data);
 };

@@ -1,8 +1,10 @@
 import { getIO } from "../libs/socket";
 import Message from "../models/Message";
 import Ticket from "../models/Ticket";
+import Whatsapp from "../models/Whatsapp";
 import { logger } from "../utils/logger";
-import { whatsappProvider } from "../providers/WhatsApp";
+import { getProvider } from "../providers/WhatsApp";
+import { buildChatId } from "./buildChatId";
 
 const SetTicketMessagesAsRead = async (ticket: Ticket): Promise<void> => {
   await Message.update(
@@ -19,9 +21,11 @@ const SetTicketMessagesAsRead = async (ticket: Ticket): Promise<void> => {
 
   try {
     if (ticket.whatsappId) {
-      await whatsappProvider.sendSeen(
+      const whatsapp = ticket.whatsapp || await Whatsapp.findByPk(ticket.whatsappId);
+      const channel = whatsapp?.channel || "whatsapp";
+      await getProvider(channel).sendSeen(
         ticket.whatsappId,
-        `${ticket.contact.number}@${ticket.isGroup ? "g" : "c"}.us`
+        buildChatId(channel, ticket.contact.number, ticket.isGroup)
       );
     }
   } catch (err) {

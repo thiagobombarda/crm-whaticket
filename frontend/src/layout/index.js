@@ -6,17 +6,14 @@ import {
   AppBar,
   Toolbar,
   List,
-  Typography,
   Divider,
   MenuItem,
   IconButton,
   Menu,
-  Switch,
+  Avatar,
+  Typography,
 } from "@material-ui/core";
-import MenuIcon from "@material-ui/icons/Menu";
-import ChevronLeftIcon from "@material-ui/icons/ChevronLeft";
-import AccountCircle from "@material-ui/icons/AccountCircle";
-import Brightness4Icon from "@material-ui/icons/Brightness4";
+import { Menu as MenuIcon, ChevronLeft, LogOut, User, MessageSquareText } from "lucide-react";
 
 import MainListItems from "./MainListItems";
 import NotificationsPopOver from "../components/NotificationsPopOver";
@@ -24,36 +21,96 @@ import UserModal from "../components/UserModal";
 import { AuthContext } from "../context/Auth/AuthContext";
 import BackdropLoading from "../components/BackdropLoading";
 import { i18n } from "../translate/i18n";
-import { useThemeContext } from "../context/DarkMode";
 
-const drawerWidth = 240;
+const drawerWidth = 232;
+
+const getInitials = (name = "") => {
+  const parts = name.trim().split(" ");
+  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+};
+
+const getAvatarColor = (name = "") => {
+  const colors = [
+    { bg: "#DCFCE7", text: "#15803D" },
+    { bg: "#EDE9FE", text: "#6D28D9" },
+    { bg: "#FEF3C7", text: "#B45309" },
+    { bg: "#FCE7F3", text: "#9D174D" },
+    { bg: "#DBEAFE", text: "#1D4ED8" },
+  ];
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash += name.charCodeAt(i);
+  return colors[hash % colors.length];
+};
 
 const useStyles = makeStyles((theme) => ({
   root: {
     display: "flex",
     height: "100vh",
+    backgroundColor: "#FAFAF9",
     [theme.breakpoints.down("sm")]: {
       height: "calc(100vh - 56px)",
     },
   },
+
   toolbar: {
-    paddingRight: 24, // keep right padding when drawer closed
+    paddingRight: 12,
+    paddingLeft: 12,
+    gap: 4,
+    minHeight: 52,
   },
+
   toolbarIcon: {
     display: "flex",
     alignItems: "center",
-    justifyContent: "flex-end",
-    padding: "0 8px",
-    minHeight: "48px",
+    justifyContent: "space-between",
+    padding: "0 8px 0 16px",
+    minHeight: "52px",
+    borderBottom: "1px solid #F0EEE",
   },
+
+  brandRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    textDecoration: "none",
+  },
+
+  brandMark: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: "#25D366",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    "& svg": {
+      color: "#fff",
+      fontSize: 17,
+    },
+  },
+
+  brandName: {
+    color: "#292524",
+    fontFamily: '"DM Sans", system-ui, sans-serif',
+    fontWeight: 700,
+    fontSize: 15.5,
+    letterSpacing: "-0.3px",
+  },
+
   appBar: {
     zIndex: theme.zIndex.drawer + 1,
     transition: theme.transitions.create(["width", "margin"], {
       easing: theme.transitions.easing.sharp,
       duration: theme.transitions.duration.leavingScreen,
     }),
-    backgroundColor: theme.palette.background.default,
+    backgroundColor: "#ffffff",
+    borderBottom: "1px solid #E7E5E4",
+    boxShadow: "none",
+    color: "#292524",
   },
+
   appBarShift: {
     marginLeft: drawerWidth,
     width: `calc(100% - ${drawerWidth}px)`,
@@ -62,27 +119,38 @@ const useStyles = makeStyles((theme) => ({
       duration: theme.transitions.duration.enteringScreen,
     }),
   },
+
   menuButton: {
-    marginRight: 36,
-    color: theme.palette.text.primary,
+    marginRight: 8,
+    color: "#78716C",
+    "&:hover": {
+      color: "#292524",
+      backgroundColor: "#F5F5F4",
+    },
   },
+
   menuButtonHidden: {
     display: "none",
   },
-  title: {
+
+  spacer: {
     flexGrow: 1,
-    color: theme.palette.text.primary,
   },
+
   drawerPaper: {
     position: "relative",
     whiteSpace: "nowrap",
     width: drawerWidth,
+    backgroundColor: "#FFFFFF",
+    borderRight: "1px solid #E7E5E4",
     transition: theme.transitions.create("width", {
       easing: theme.transitions.easing.sharp,
       duration: theme.transitions.duration.enteringScreen,
     }),
-    backgroundColor: theme.palette.background.paper,
+    display: "flex",
+    flexDirection: "column",
   },
+
   drawerPaperClose: {
     overflowX: "hidden",
     transition: theme.transitions.create("width", {
@@ -94,35 +162,114 @@ const useStyles = makeStyles((theme) => ({
       width: theme.spacing(9),
     },
   },
-  appBarSpacer: {
-    minHeight: "48px",
+
+  drawerList: {
+    flex: 1,
+    overflowY: "auto",
+    overflowX: "hidden",
+    ...theme.scrollbarStyles,
   },
+
+  appBarSpacer: {
+    minHeight: "52px",
+  },
+
   content: {
     flex: 1,
     overflow: "auto",
+    backgroundColor: "#FAFAF9",
+    ...theme.scrollbarStyles,
   },
-  container: {
-    paddingTop: theme.spacing(4),
-    paddingBottom: theme.spacing(4),
+
+  chevronBtn: {
+    color: "#A8A29E",
+    width: 28,
+    height: 28,
+    "&:hover": {
+      color: "#292524",
+      backgroundColor: "#F5F5F4",
+    },
   },
-  paper: {
-    padding: theme.spacing(2),
-    display: "flex",
-    overflow: "auto",
-    flexDirection: "column",
-  },
-  switch: {
-    transform: "scale(0.8)",
-  },
-  iconButton: {
-    color: theme.palette.text.primary,
-  },
-  themeSwitchContainer: {
+
+  userButton: {
     display: "flex",
     alignItems: "center",
+    gap: 8,
+    padding: "4px 6px 4px 4px",
+    borderRadius: 10,
+    cursor: "pointer",
+    border: "1px solid transparent",
+    transition: "all 0.15s ease",
+    "&:hover": {
+      backgroundColor: "#F5F5F4",
+      border: "1px solid #E7E5E4",
+    },
   },
-  themeIcon: {
-    color: theme.palette.text.primary,
+
+  userAvatar: {
+    width: 28,
+    height: 28,
+    fontSize: 11,
+    fontWeight: 700,
+    fontFamily: '"DM Sans", system-ui, sans-serif',
+  },
+
+  userName: {
+    fontFamily: '"DM Sans", system-ui, sans-serif',
+    fontWeight: 600,
+    fontSize: 13,
+    color: "#292524",
+    maxWidth: 130,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    [theme.breakpoints.down("sm")]: {
+      display: "none",
+    },
+  },
+
+  menuPaper: {
+    marginTop: 8,
+    borderRadius: "12px !important",
+    border: "1px solid #E7E5E4",
+    boxShadow: "0 8px 24px rgba(28,25,23,0.1), 0 2px 6px rgba(28,25,23,0.04)",
+    minWidth: 188,
+    "& .MuiList-padding": {
+      padding: "6px",
+    },
+  },
+
+  menuItem: {
+    fontFamily: '"DM Sans", system-ui, sans-serif',
+    fontSize: 14,
+    color: "#292524",
+    gap: 10,
+    padding: "8px 12px",
+    borderRadius: 8,
+    margin: "1px 0",
+    "&:hover": {
+      backgroundColor: "#F5F5F4",
+    },
+  },
+
+  menuItemIcon: {
+    fontSize: 18,
+    color: "#78716C",
+  },
+
+  menuItemLogout: {
+    color: "#DC2626",
+    "&:hover": {
+      backgroundColor: "#FEF2F2",
+    },
+    "& $menuItemIcon": {
+      color: "#DC2626",
+    },
+  },
+
+  menuDivider: {
+    margin: "4px 8px",
+    backgroundColor: "#E7E5E4",
   },
 }));
 
@@ -135,7 +282,18 @@ const LoggedInLayout = ({ children }) => {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerVariant, setDrawerVariant] = useState("permanent");
   const { user } = useContext(AuthContext);
-  const { darkMode, toggleTheme } = useThemeContext();
+
+  useEffect(() => {
+    const id = "app-fonts";
+    if (!document.getElementById(id)) {
+      const link = document.createElement("link");
+      link.id = id;
+      link.rel = "stylesheet";
+      link.href =
+        "https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Fraunces:ital,opsz,wght@0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,700&display=swap";
+      document.head.appendChild(link);
+    }
+  }, []);
 
   useEffect(() => {
     if (document.body.offsetWidth > 600) {
@@ -181,109 +339,115 @@ const LoggedInLayout = ({ children }) => {
     return <BackdropLoading />;
   }
 
+  const avatarColors = getAvatarColor(user?.name || "");
+
   return (
     <div className={classes.root}>
       <Drawer
         variant={drawerVariant}
         className={drawerOpen ? classes.drawerPaper : classes.drawerPaperClose}
         classes={{
-          paper: clsx(
-            classes.drawerPaper,
-            !drawerOpen && classes.drawerPaperClose
-          ),
+          paper: clsx(classes.drawerPaper, !drawerOpen && classes.drawerPaperClose),
         }}
         open={drawerOpen}
       >
         <div className={classes.toolbarIcon}>
-          <IconButton onClick={() => setDrawerOpen(!drawerOpen)}>
-            <ChevronLeftIcon />
+          <div className={classes.brandRow}>
+            <div className={classes.brandMark}>
+              <MessageSquareText size={17} />
+            </div>
+            {drawerOpen && (
+              <span className={classes.brandName}>WhaTicket</span>
+            )}
+          </div>
+          <IconButton
+            onClick={() => setDrawerOpen(!drawerOpen)}
+            className={classes.chevronBtn}
+            size="small"
+          >
+            <ChevronLeft size={16} />
           </IconButton>
         </div>
-        <Divider />
-        <List>
-          <MainListItems drawerClose={drawerClose} />
-        </List>
-        <Divider />
+
+        <div className={classes.drawerList}>
+          <List disablePadding>
+            <MainListItems drawerClose={drawerClose} collapsed={!drawerOpen} />
+          </List>
+        </div>
       </Drawer>
+
       <UserModal
         open={userModalOpen}
         onClose={() => setUserModalOpen(false)}
         userId={user?.id}
       />
+
       <AppBar
         position="absolute"
         className={clsx(classes.appBar, drawerOpen && classes.appBarShift)}
+        elevation={0}
       >
         <Toolbar variant="dense" className={classes.toolbar}>
           <IconButton
             edge="start"
             aria-label="open drawer"
             onClick={() => setDrawerOpen(!drawerOpen)}
-            className={clsx(
-              classes.menuButton,
-              drawerOpen && classes.menuButtonHidden
-            )}
+            className={clsx(classes.menuButton, drawerOpen && classes.menuButtonHidden)}
+            size="small"
           >
-            <MenuIcon />
+            <MenuIcon size={18} />
           </IconButton>
-          <Typography
-            component="h1"
-            variant="h6"
-            noWrap
-            className={classes.title}
-          >
-            WhaTicket
-          </Typography>
 
-          <div className={classes.themeSwitchContainer}>
-            <Brightness4Icon className={classes.themeIcon} />
-            <Switch
-              checked={darkMode}
-              onChange={toggleTheme}
-              color="default"
-              className={classes.switch}
-            />
-          </div>
+          <div className={classes.spacer} />
 
           {user.id && (
-            <NotificationsPopOver className={classes.iconButton} />
+            <NotificationsPopOver className={classes.menuButton} />
           )}
 
-          <div>
-            <IconButton
-              aria-label="account of current user"
-              aria-controls="menu-appbar"
-              aria-haspopup="true"
-              onClick={handleMenu}
-              className={classes.iconButton}
-            >
-              <AccountCircle />
-            </IconButton>
-            <Menu
-              id="menu-appbar"
-              anchorEl={anchorEl}
-              getContentAnchorEl={null}
-              anchorOrigin={{
-                vertical: "bottom",
-                horizontal: "right",
+          <div
+            className={classes.userButton}
+            onClick={handleMenu}
+            aria-controls="menu-appbar"
+            aria-haspopup="true"
+          >
+            <Avatar
+              className={classes.userAvatar}
+              style={{
+                backgroundColor: avatarColors.bg,
+                color: avatarColors.text,
               }}
-              transformOrigin={{
-                vertical: "top",
-                horizontal: "right",
-              }}
-              open={menuOpen}
-              onClose={handleCloseMenu}
             >
-              <MenuItem onClick={handleOpenUserModal}>
-                {i18n.t("mainDrawer.appBar.user.profile")}
-              </MenuItem>
-              <MenuItem onClick={handleClickLogout}>
-                {i18n.t("mainDrawer.appBar.user.logout")}
-              </MenuItem>
-            </Menu>
+              {getInitials(user?.name || "")}
+            </Avatar>
+            <span className={classes.userName}>{user?.name}</span>
           </div>
+
+          <Menu
+            id="menu-appbar"
+            anchorEl={anchorEl}
+            getContentAnchorEl={null}
+            anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+            transformOrigin={{ vertical: "top", horizontal: "right" }}
+            open={menuOpen}
+            onClose={handleCloseMenu}
+            PaperProps={{ className: classes.menuPaper }}
+          >
+            <MenuItem onClick={handleOpenUserModal} className={classes.menuItem}>
+              <User size={16} className={classes.menuItemIcon} />
+              {i18n.t("mainDrawer.appBar.user.profile")}
+            </MenuItem>
+            <Divider className={classes.menuDivider} />
+            <MenuItem
+              onClick={handleClickLogout}
+              className={clsx(classes.menuItem, classes.menuItemLogout)}
+            >
+              <LogOut size={16} className={classes.menuItemIcon} />
+              {i18n.t("mainDrawer.appBar.user.logout")}
+            </MenuItem>
+          </Menu>
         </Toolbar>
       </AppBar>
+
       <main className={classes.content}>
         <div className={classes.appBarSpacer} />
         {children ? children : null}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useParams, useHistory } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 
 import { toast } from "react-toastify";
 import openSocket from "../../services/socket-io";
@@ -54,7 +54,7 @@ const useStyles = makeStyles((theme) => ({
     overflow: "hidden",
     borderTopLeftRadius: 0,
     borderBottomLeftRadius: 0,
-    borderLeft: "0",
+    borderLeft: "1px solid #E5E9EF",
     marginRight: -drawerWidth,
     transition: theme.transitions.create("margin", {
       easing: theme.transitions.easing.sharp,
@@ -75,7 +75,7 @@ const useStyles = makeStyles((theme) => ({
 
 const Ticket = () => {
   const { ticketId } = useParams();
-  const history = useHistory();
+  const navigate = useNavigate();
   const classes = useStyles();
 
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -106,7 +106,14 @@ const Ticket = () => {
   useEffect(() => {
     const socket = openSocket();
 
-    socket.on("connect", () => socket.emit("joinChatBox", ticketId));
+    if (socket.connected) {
+      socket.emit("joinChatBox", ticketId);
+      socket.emit("joinNotification");
+    }
+    socket.on("connect", () => {
+      socket.emit("joinChatBox", ticketId);
+      socket.emit("joinNotification");
+    });
 
     socket.on("ticket", (data) => {
       if (data.action === "update") {
@@ -115,7 +122,7 @@ const Ticket = () => {
 
       if (data.action === "delete") {
         toast.success("Ticket deleted sucessfully.");
-        history.push("/tickets");
+        navigate("/tickets");
       }
     });
 

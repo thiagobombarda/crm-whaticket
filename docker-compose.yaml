@@ -10,23 +10,45 @@ services:
       context: ./backend
       dockerfile: ./Dockerfile
     environment:
-      - DB_HOST=mysql
-      - DB_USER=root
-      - DB_PASS=${MYSQL_ROOT_PASSWORD:-strongpassword}
-      - DB_NAME=${MYSQL_DATABASE:-whaticket}
+      - DB_HOST=postgres
+      - DB_DIALECT=postgres
+      - DB_PORT=5432
+      - DB_USER=${POSTGRES_USER:-whaticket}
+      - DB_PASS=${POSTGRES_PASSWORD:-strongpassword}
+      - DB_NAME=${POSTGRES_DB:-whaticket}
       - JWT_SECRET=${JWT_SECRET:-3123123213123}
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-75756756756}
       - BACKEND_URL=${BACKEND_URL:-http://localhost}
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
       - PROXY_PORT=${PROXY_PORT:-8080}
-      - CHROME_ARGS=--no-sandbox --disable-setuid-sandbox
+      - IO_REDIS_SERVER=redis
+      - IO_REDIS_PORT=6379
+      - IO_REDIS_DB_SESSION=2
+      - REDIS_URL=redis://redis:6379/0
+      - BAILEYS_LOG_LEVEL=${BAILEYS_LOG_LEVEL:-error}
+      - MESSAGE_WORKER_CONCURRENCY=${MESSAGE_WORKER_CONCURRENCY:-5}
+      - OUTBOUND_RATE_LIMIT=${OUTBOUND_RATE_LIMIT:-20}
+      - FACEBOOK_APP_ID=${FACEBOOK_APP_ID}
+      - FACEBOOK_APP_SECRET=${FACEBOOK_APP_SECRET}
+      - INSTAGRAM_WEBHOOK_VERIFY_TOKEN=${INSTAGRAM_WEBHOOK_VERIFY_TOKEN:-whaticket_ig_verify}
     ports:
       - ${BACKEND_PORT:-8080}:3000
     volumes:
       - ./backend/public/:/usr/src/app/public/
-      - ./backend/.wwebjs_auth/:/usr/src/app/.wwebjs_auth/
     networks:
       - whaticket
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   frontend:
     ports:
@@ -37,7 +59,7 @@ services:
       dockerfile: ./Dockerfile
     environment:
       - URL_BACKEND=backend:3000
-      - REACT_APP_BACKEND_URL=${BACKEND_URL:-http://localhost}:${PROXY_PORT:-8080}/
+      - VITE_BACKEND_URL=${BACKEND_URL:-http://localhost}:${PROXY_PORT:-8080}/
       - FRONTEND_SERVER_NAME=${FRONTEND_SERVER_NAME}
       - BACKEND_SERVER_NAME=${BACKEND_SERVER_NAME}
     volumes:
@@ -45,18 +67,52 @@ services:
       - ./ssl/www/:/var/www/letsencrypt/
     networks:
       - whaticket
+    depends_on:
+      - backend
 
-  mysql:
-    image: ${MYSQL_ENGINE:-mariadb}:${MYSQL_VERSION:-10.6}
-    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_bin    
+  postgres:
+    image: postgres:17
     volumes:
-      - ./.docker/data/:/var/lib/mysql
+      - ./.docker/data/:/var/lib/postgresql/data
+      - ./.docker/postgres-init/:/docker-entrypoint-initdb.d/
     environment:
-      - MYSQL_DATABASE=${MYSQL_DATABASE:-whaticket}
-      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-strongpassword}
+      - POSTGRES_DB=${POSTGRES_DB:-whaticket}
+      - POSTGRES_USER=${POSTGRES_USER:-whaticket}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-strongpassword}
       - TZ=${TZ:-America/Fortaleza}
-    ports:
-      - ${MYSQL_PORT:-3306}:3306
+    command: >
+      postgres
+        -c max_connections=200
+        -c shared_buffers=256MB
+        -c effective_cache_size=768MB
+        -c work_mem=8MB
+        -c maintenance_work_mem=64MB
+        -c checkpoint_completion_target=0.9
+        -c wal_buffers=16MB
+        -c random_page_cost=1.1
+        -c effective_io_concurrency=200
     restart: always
     networks:
       - whaticket
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-whaticket} -d ${POSTGRES_DB:-whaticket}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:8-alpine
+    command: >
+      redis-server
+        --maxmemory 256mb
+        --maxmemory-policy noeviction
+        --save ""
+        --appendonly no
+    restart: always
+    networks:
+      - whaticket
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

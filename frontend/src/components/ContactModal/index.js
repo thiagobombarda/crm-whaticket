@@ -5,273 +5,371 @@ import { Formik, FieldArray, Form, Field } from "formik";
 import { toast } from "react-toastify";
 
 import { makeStyles } from "@material-ui/core/styles";
-import { green } from "@material-ui/core/colors";
 import Button from "@material-ui/core/Button";
 import TextField from "@material-ui/core/TextField";
 import Dialog from "@material-ui/core/Dialog";
 import DialogActions from "@material-ui/core/DialogActions";
 import DialogContent from "@material-ui/core/DialogContent";
-import DialogTitle from "@material-ui/core/DialogTitle";
-import Typography from "@material-ui/core/Typography";
 import IconButton from "@material-ui/core/IconButton";
-import DeleteOutlineIcon from "@material-ui/icons/DeleteOutline";
+import { Trash2 as DeleteOutlineIcon, Plus as AddIcon } from "lucide-react";
 import CircularProgress from "@material-ui/core/CircularProgress";
 
 import { i18n } from "../../translate/i18n";
-
 import api from "../../services/api";
 import toastError from "../../errors/toastError";
 
-const useStyles = makeStyles(theme => ({
-	root: {
-		display: "flex",
-		flexWrap: "wrap",
-	},
-	textField: {
-		marginRight: theme.spacing(1),
-		flex: 1,
-	},
+const useStyles = makeStyles(() => ({
+  dialogTitle: {
+    padding: "24px 24px 0",
+    fontFamily: '"Fraunces", Georgia, serif',
+    fontWeight: 700,
+    fontSize: 18,
+    color: "#0A0F1E",
+    letterSpacing: "-0.3px",
+  },
 
-	extraAttr: {
-		display: "flex",
-		justifyContent: "center",
-		alignItems: "center",
-	},
+  sectionLabel: {
+    fontFamily: '"DM Sans", system-ui, sans-serif',
+    fontWeight: 600,
+    fontSize: 11,
+    color: "#9BA3B0",
+    letterSpacing: "0.6px",
+    textTransform: "uppercase",
+    margin: "0 0 10px",
+  },
 
-	btnWrapper: {
-		position: "relative",
-	},
+  section: {
+    marginBottom: 20,
+  },
 
-	buttonProgress: {
-		color: green[500],
-		position: "absolute",
-		top: "50%",
-		left: "50%",
-		marginTop: -12,
-		marginLeft: -12,
-	},
+  fieldRow: {
+    display: "flex",
+    gap: 16,
+  },
+
+  field: {
+    flex: 1,
+    "& .MuiOutlinedInput-root": {
+      borderRadius: 11,
+      fontFamily: '"DM Sans", system-ui, sans-serif',
+      fontSize: 14,
+      "& fieldset": { borderColor: "#E5E9EF" },
+      "&:hover fieldset": { borderColor: "#25D366" },
+      "&.Mui-focused fieldset": { borderColor: "#25D366", borderWidth: 1.5 },
+    },
+    "& .MuiInputLabel-outlined": {
+      fontFamily: '"DM Sans", system-ui, sans-serif',
+      fontSize: 14,
+      color: "#9BA3B0",
+    },
+    "& .MuiInputLabel-outlined.Mui-focused": {
+      color: "#25D366",
+    },
+    "& .MuiFormHelperText-root": {
+      fontFamily: '"DM Sans", system-ui, sans-serif',
+      fontSize: 11,
+    },
+  },
+
+  extraRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 10,
+  },
+
+  addExtraBtn: {
+    width: "100%",
+    borderRadius: 9,
+    border: "1px dashed #E5E9EF",
+    color: "#9BA3B0",
+    fontFamily: '"DM Sans", system-ui, sans-serif',
+    fontWeight: 600,
+    fontSize: 13,
+    textTransform: "none",
+    height: 38,
+    backgroundColor: "transparent",
+    "&:hover": {
+      backgroundColor: "#F7F8FA",
+      borderColor: "#25D366",
+      color: "#1DAB57",
+    },
+  },
+
+  deleteExtraBtn: {
+    color: "#C4CDD5",
+    padding: 6,
+    "&:hover": {
+      color: "#DC2626",
+      backgroundColor: "rgba(220,38,38,0.08)",
+    },
+  },
+
+  cancelBtn: {
+    borderRadius: 11,
+    border: "1px solid #E5E9EF",
+    color: "#9BA3B0",
+    fontFamily: '"DM Sans", system-ui, sans-serif',
+    fontWeight: 600,
+    fontSize: 13,
+    textTransform: "none",
+    height: 40,
+    padding: "0 20px",
+    backgroundColor: "transparent",
+    boxShadow: "none",
+    "&:hover": {
+      backgroundColor: "#F7F8FA",
+      boxShadow: "none",
+    },
+  },
+
+  saveBtn: {
+    borderRadius: 11,
+    background: "linear-gradient(135deg, #25D366, #1DAB57)",
+    color: "#ffffff",
+    fontFamily: '"DM Sans", system-ui, sans-serif',
+    fontWeight: 600,
+    fontSize: 13,
+    textTransform: "none",
+    height: 40,
+    padding: "0 24px",
+    boxShadow: "none",
+    position: "relative",
+    "&:hover": {
+      background: "linear-gradient(135deg, #1DAB57, #178A45)",
+      boxShadow: "none",
+    },
+    "&.Mui-disabled": {
+      opacity: 0.7,
+      color: "#ffffff",
+    },
+  },
+
+  buttonProgress: {
+    color: "#25D366",
+    position: "absolute",
+    top: "50%",
+    left: "50%",
+    marginTop: -12,
+    marginLeft: -12,
+  },
 }));
 
 const ContactSchema = Yup.object().shape({
-	name: Yup.string()
-		.min(2, "Too Short!")
-		.max(50, "Too Long!")
-		.required("Required"),
-	number: Yup.string().min(8, "Too Short!").max(50, "Too Long!"),
-	email: Yup.string().email("Invalid email"),
+  name: Yup.string()
+    .min(2, "Too Short!")
+    .max(50, "Too Long!")
+    .required("Required"),
+  number: Yup.string().min(8, "Too Short!").max(50, "Too Long!"),
+  email: Yup.string().email("Invalid email"),
 });
 
 const ContactModal = ({ open, onClose, contactId, initialValues, onSave }) => {
-	const classes = useStyles();
-	const isMounted = useRef(true);
+  const classes = useStyles();
+  const isMounted = useRef(true);
 
-	const initialState = {
-		name: "",
-		number: "",
-		email: "",
-	};
+  const initialState = { name: "", number: "", email: "" };
+  const [contact, setContact] = useState(initialState);
 
-	const [contact, setContact] = useState(initialState);
+  useEffect(() => {
+    return () => { isMounted.current = false; };
+  }, []);
 
-	useEffect(() => {
-		return () => {
-			isMounted.current = false;
-		};
-	}, []);
+  useEffect(() => {
+    const fetchContact = async () => {
+      if (initialValues) {
+        setContact((prevState) => ({ ...prevState, ...initialValues }));
+      }
+      if (!contactId) return;
+      try {
+        const { data } = await api.get(`/contacts/${contactId}`);
+        if (isMounted.current) {
+          setContact(data);
+        }
+      } catch (err) {
+        toastError(err);
+      }
+    };
+    fetchContact();
+  }, [contactId, open, initialValues]);
 
-	useEffect(() => {
-		const fetchContact = async () => {
-			if (initialValues) {
-				setContact(prevState => {
-					return { ...prevState, ...initialValues };
-				});
-			}
+  const handleClose = () => {
+    onClose();
+    setContact(initialState);
+  };
 
-			if (!contactId) return;
+  const handleSaveContact = async (values) => {
+    try {
+      if (contactId) {
+        await api.put(`/contacts/${contactId}`, values);
+        handleClose();
+      } else {
+        const { data } = await api.post("/contacts", values);
+        if (onSave) onSave(data);
+        handleClose();
+      }
+      toast.success(i18n.t("contactModal.success"));
+    } catch (err) {
+      toastError(err);
+    }
+  };
 
-			try {
-				const { data } = await api.get(`/contacts/${contactId}`);
-				if (isMounted.current) {
-					setContact(data);
-				}
-			} catch (err) {
-				toastError(err);
-			}
-		};
+  return (
+    <Dialog
+      open={open}
+      onClose={handleClose}
+      maxWidth="sm"
+      fullWidth
+      scroll="paper"
+      PaperProps={{
+        style: {
+          borderRadius: 14,
+          border: "1px solid #E5E9EF",
+          boxShadow: "0 8px 32px rgba(10,15,30,0.10)",
+        },
+      }}
+    >
+      <div className={classes.dialogTitle}>
+        {contactId
+          ? i18n.t("contactModal.title.edit")
+          : i18n.t("contactModal.title.add")}
+      </div>
 
-		fetchContact();
-	}, [contactId, open, initialValues]);
+      <Formik
+        initialValues={contact}
+        enableReinitialize={true}
+        validationSchema={ContactSchema}
+        onSubmit={(values, actions) => {
+          setTimeout(() => {
+            handleSaveContact(values);
+            actions.setSubmitting(false);
+          }, 400);
+        }}
+      >
+        {({ values, errors, touched, isSubmitting }) => (
+          <Form>
+            <DialogContent style={{ padding: "20px 24px" }}>
+              <div className={classes.section}>
+                <p className={classes.sectionLabel}>
+                  {i18n.t("contactModal.form.mainInfo")}
+                </p>
+                <div className={classes.fieldRow}>
+                  <Field
+                    as={TextField}
+                    label={i18n.t("contactModal.form.name")}
+                    name="name"
+                    autoFocus
+                    error={touched.name && Boolean(errors.name)}
+                    helperText={touched.name && errors.name}
+                    variant="outlined"
+                    size="small"
+                    className={classes.field}
+                  />
+                  <Field
+                    as={TextField}
+                    label={i18n.t("contactModal.form.number")}
+                    name="number"
+                    error={touched.number && Boolean(errors.number)}
+                    helperText={touched.number && errors.number}
+                    placeholder="5513912344321"
+                    variant="outlined"
+                    size="small"
+                    className={classes.field}
+                  />
+                </div>
+                <div style={{ marginTop: 14 }}>
+                  <Field
+                    as={TextField}
+                    label={i18n.t("contactModal.form.email")}
+                    name="email"
+                    error={touched.email && Boolean(errors.email)}
+                    helperText={touched.email && errors.email}
+                    placeholder="email@exemplo.com"
+                    fullWidth
+                    variant="outlined"
+                    size="small"
+                    className={classes.field}
+                  />
+                </div>
+              </div>
 
-	const handleClose = () => {
-		onClose();
-		setContact(initialState);
-	};
+              <div className={classes.section}>
+                <p className={classes.sectionLabel}>
+                  {i18n.t("contactModal.form.extraInfo")}
+                </p>
+                <FieldArray name="extraInfo">
+                  {({ push, remove }) => (
+                    <>
+                      {values.extraInfo &&
+                        values.extraInfo.length > 0 &&
+                        values.extraInfo.map((info, index) => (
+                          <div className={classes.extraRow} key={`${index}-info`}>
+                            <Field
+                              as={TextField}
+                              label={i18n.t("contactModal.form.extraName")}
+                              name={`extraInfo[${index}].name`}
+                              variant="outlined"
+                              size="small"
+                              className={classes.field}
+                            />
+                            <Field
+                              as={TextField}
+                              label={i18n.t("contactModal.form.extraValue")}
+                              name={`extraInfo[${index}].value`}
+                              variant="outlined"
+                              size="small"
+                              className={classes.field}
+                            />
+                            <IconButton
+                              size="small"
+                              className={classes.deleteExtraBtn}
+                              onClick={() => remove(index)}
+                            >
+                              <DeleteOutlineIcon size={18} />
+                            </IconButton>
+                          </div>
+                        ))}
+                      <Button
+                        className={classes.addExtraBtn}
+                        startIcon={<AddIcon size={16} />}
+                        onClick={() => push({ name: "", value: "" })}
+                      >
+                        {i18n.t("contactModal.buttons.addExtraInfo")}
+                      </Button>
+                    </>
+                  )}
+                </FieldArray>
+              </div>
+            </DialogContent>
 
-	const handleSaveContact = async values => {
-		try {
-			if (contactId) {
-				await api.put(`/contacts/${contactId}`, values);
-				handleClose();
-			} else {
-				const { data } = await api.post("/contacts", values);
-				if (onSave) {
-					onSave(data);
-				}
-				handleClose();
-			}
-			toast.success(i18n.t("contactModal.success"));
-		} catch (err) {
-			toastError(err);
-		}
-	};
-
-	return (
-		<div className={classes.root}>
-			<Dialog open={open} onClose={handleClose} maxWidth="lg" scroll="paper">
-				<DialogTitle id="form-dialog-title">
-					{contactId
-						? `${i18n.t("contactModal.title.edit")}`
-						: `${i18n.t("contactModal.title.add")}`}
-				</DialogTitle>
-				<Formik
-					initialValues={contact}
-					enableReinitialize={true}
-					validationSchema={ContactSchema}
-					onSubmit={(values, actions) => {
-						setTimeout(() => {
-							handleSaveContact(values);
-							actions.setSubmitting(false);
-						}, 400);
-					}}
-				>
-					{({ values, errors, touched, isSubmitting }) => (
-						<Form>
-							<DialogContent dividers>
-								<Typography variant="subtitle1" gutterBottom>
-									{i18n.t("contactModal.form.mainInfo")}
-								</Typography>
-								<Field
-									as={TextField}
-									label={i18n.t("contactModal.form.name")}
-									name="name"
-									autoFocus
-									error={touched.name && Boolean(errors.name)}
-									helperText={touched.name && errors.name}
-									variant="outlined"
-									margin="dense"
-									className={classes.textField}
-								/>
-								<Field
-									as={TextField}
-									label={i18n.t("contactModal.form.number")}
-									name="number"
-									error={touched.number && Boolean(errors.number)}
-									helperText={touched.number && errors.number}
-									placeholder="5513912344321"
-									variant="outlined"
-									margin="dense"
-								/>
-								<div>
-									<Field
-										as={TextField}
-										label={i18n.t("contactModal.form.email")}
-										name="email"
-										error={touched.email && Boolean(errors.email)}
-										helperText={touched.email && errors.email}
-										placeholder="Email address"
-										fullWidth
-										margin="dense"
-										variant="outlined"
-									/>
-								</div>
-								<Typography
-									style={{ marginBottom: 8, marginTop: 12 }}
-									variant="subtitle1"
-								>
-									{i18n.t("contactModal.form.extraInfo")}
-								</Typography>
-
-								<FieldArray name="extraInfo">
-									{({ push, remove }) => (
-										<>
-											{values.extraInfo &&
-												values.extraInfo.length > 0 &&
-												values.extraInfo.map((info, index) => (
-													<div
-														className={classes.extraAttr}
-														key={`${index}-info`}
-													>
-														<Field
-															as={TextField}
-															label={i18n.t("contactModal.form.extraName")}
-															name={`extraInfo[${index}].name`}
-															variant="outlined"
-															margin="dense"
-															className={classes.textField}
-														/>
-														<Field
-															as={TextField}
-															label={i18n.t("contactModal.form.extraValue")}
-															name={`extraInfo[${index}].value`}
-															variant="outlined"
-															margin="dense"
-															className={classes.textField}
-														/>
-														<IconButton
-															size="small"
-															onClick={() => remove(index)}
-														>
-															<DeleteOutlineIcon />
-														</IconButton>
-													</div>
-												))}
-											<div className={classes.extraAttr}>
-												<Button
-													style={{ flex: 1, marginTop: 8 }}
-													variant="outlined"
-													color="primary"
-													onClick={() => push({ name: "", value: "" })}
-												>
-													{`+ ${i18n.t("contactModal.buttons.addExtraInfo")}`}
-												</Button>
-											</div>
-										</>
-									)}
-								</FieldArray>
-							</DialogContent>
-							<DialogActions>
-								<Button
-									onClick={handleClose}
-									color="secondary"
-									disabled={isSubmitting}
-									variant="outlined"
-								>
-									{i18n.t("contactModal.buttons.cancel")}
-								</Button>
-								<Button
-									type="submit"
-									color="primary"
-									disabled={isSubmitting}
-									variant="contained"
-									className={classes.btnWrapper}
-								>
-									{contactId
-										? `${i18n.t("contactModal.buttons.okEdit")}`
-										: `${i18n.t("contactModal.buttons.okAdd")}`}
-									{isSubmitting && (
-										<CircularProgress
-											size={24}
-											className={classes.buttonProgress}
-										/>
-									)}
-								</Button>
-							</DialogActions>
-						</Form>
-					)}
-				</Formik>
-			</Dialog>
-		</div>
-	);
+            <DialogActions style={{ padding: "12px 24px 20px", gap: 10 }}>
+              <Button
+                onClick={handleClose}
+                disabled={isSubmitting}
+                className={classes.cancelBtn}
+                variant="outlined"
+              >
+                {i18n.t("contactModal.buttons.cancel")}
+              </Button>
+              <Button
+                type="submit"
+                disabled={isSubmitting}
+                className={classes.saveBtn}
+                variant="contained"
+              >
+                {contactId
+                  ? i18n.t("contactModal.buttons.okEdit")
+                  : i18n.t("contactModal.buttons.okAdd")}
+                {isSubmitting && (
+                  <CircularProgress size={24} className={classes.buttonProgress} />
+                )}
+              </Button>
+            </DialogActions>
+          </Form>
+        )}
+      </Formik>
+    </Dialog>
+  );
 };
 
 export default ContactModal;

@@ -1,13 +1,11 @@
 import React, { useContext, useEffect, useRef, useState } from "react";
 import { makeStyles } from "@material-ui/core/styles";
 import Paper from "@material-ui/core/Paper";
-import SearchIcon from "@material-ui/icons/Search";
+import { Search as SearchIcon } from "lucide-react";
 import InputBase from "@material-ui/core/InputBase";
 import Tabs from "@material-ui/core/Tabs";
 import Tab from "@material-ui/core/Tab";
 import Badge from "@material-ui/core/Badge";
-import MoveToInboxIcon from "@material-ui/icons/MoveToInbox";
-import CheckBoxIcon from "@material-ui/icons/CheckBox";
 import FormControlLabel from "@material-ui/core/FormControlLabel";
 import Switch from "@material-ui/core/Switch";
 import NewTicketModal from "../NewTicketModal";
@@ -17,9 +15,9 @@ import { i18n } from "../../translate/i18n";
 import { AuthContext } from "../../context/Auth/AuthContext";
 import { Can } from "../Can";
 import TicketsQueueSelect from "../TicketsQueueSelect";
-import { Button } from "@material-ui/core";
+import { Button, Typography } from "@material-ui/core";
 
-const useStyles = makeStyles((theme) => ({
+const useStyles = makeStyles(() => ({
   ticketsWrapper: {
     position: "relative",
     display: "flex",
@@ -28,56 +26,137 @@ const useStyles = makeStyles((theme) => ({
     overflow: "hidden",
     borderTopRightRadius: 0,
     borderBottomRightRadius: 0,
-    backgroundColor: theme.palette.background.default,
-    color: theme.palette.text.primary,
+    backgroundColor: "#ffffff",
+    borderRight: "1px solid #E7E5E4",
   },
+
   tabsHeader: {
     flex: "none",
-    backgroundColor: theme.palette.background.paper,
+    backgroundColor: "#ffffff",
+    borderBottom: "1px solid #E7E5E4",
   },
-  settingsIcon: {
-    alignSelf: "center",
-    marginLeft: "auto",
-    padding: 8,
-  },
+
   tab: {
-    minWidth: 120,
-    width: 120,
+    minWidth: 0,
+    flex: 1,
+    fontFamily: '"DM Sans", system-ui, sans-serif',
+    fontWeight: 600,
+    fontSize: 13,
+    textTransform: "none",
+    color: "#78716C",
+    minHeight: 46,
+    padding: "0 8px",
+    letterSpacing: 0,
   },
+
+  tabsIndicator: {
+    height: 2.5,
+    borderRadius: "2px 2px 0 0",
+    backgroundColor: "#25D366",
+  },
+
   ticketOptionsBox: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    background: theme.palette.background.paper,
-    padding: theme.spacing(1),
+    background: "#ffffff",
+    padding: "8px 12px",
+    borderBottom: "1px solid #E7E5E4",
+    gap: 8,
   },
+
+  newBtn: {
+    borderRadius: 9,
+    backgroundColor: "#25D366",
+    color: "#ffffff",
+    fontFamily: '"DM Sans", system-ui, sans-serif',
+    fontWeight: 600,
+    fontSize: 12.5,
+    textTransform: "none",
+    height: 32,
+    padding: "0 14px",
+    boxShadow: "none",
+    minWidth: 0,
+    "&:hover": {
+      backgroundColor: "#1DAB57",
+      boxShadow: "0 2px 8px rgba(37,211,102,0.25)",
+    },
+  },
+
+  showAllLabel: {
+    fontFamily: '"DM Sans", system-ui, sans-serif',
+    fontSize: 12.5,
+    color: "#1C1917",
+    whiteSpace: "nowrap",
+  },
+
+  switch: {
+    "& .MuiSwitch-switchBase.Mui-checked": {
+      color: "#25D366",
+    },
+    "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track": {
+      backgroundColor: "#25D366",
+    },
+  },
+
   serachInputWrapper: {
     flex: 1,
-    background: theme.palette.background.default,
+    background: "#FAFAF9",
     display: "flex",
-    borderRadius: 40,
-    padding: 4,
-    marginRight: theme.spacing(1),
+    borderRadius: 11,
+    padding: "4px 10px",
+    border: "1px solid #E7E5E4",
+    marginRight: 8,
+    "&:focus-within": {
+      borderColor: "#25D366",
+      boxShadow: "0 0 0 3px rgba(37,211,102,0.12)",
+    },
   },
+
   searchIcon: {
-    color: "grey",
-    marginLeft: 6,
+    color: "#78716C",
     marginRight: 6,
     alignSelf: "center",
+    fontSize: 17,
   },
+
   searchInput: {
     flex: 1,
     border: "none",
-    borderRadius: 30,
-    color: theme.palette.text.primary, 
-    backgroundColor: theme.palette.background.default,
+    borderRadius: 11,
+    color: "#1C1917",
+    backgroundColor: "transparent",
+    fontFamily: '"DM Sans", system-ui, sans-serif',
+    fontSize: 13,
   },
+
+  subTabsWrapper: {
+    borderBottom: "1px solid #E7E5E4",
+    backgroundColor: "#ffffff",
+    flex: "none",
+  },
+
+  subTab: {
+    minWidth: 0,
+    flex: 1,
+    fontFamily: '"DM Sans", system-ui, sans-serif',
+    fontWeight: 600,
+    fontSize: 12.5,
+    textTransform: "none",
+    color: "#78716C",
+    minHeight: 40,
+    padding: "0 8px",
+    letterSpacing: 0,
+  },
+
   badge: {
-    right: "-10px",
+    right: -12,
   },
+
   show: {
     display: "block",
   },
+
   hide: {
     display: "none !important",
   },
@@ -156,28 +235,26 @@ const TicketsManager = () => {
           variant="fullWidth"
           indicatorColor="primary"
           textColor="primary"
-          aria-label="icon label tabs example"
+          classes={{ indicator: classes.tabsIndicator }}
         >
           <Tab
-            value={"open"}
-            icon={<MoveToInboxIcon />}
+            value="open"
             label={i18n.t("tickets.tabs.open.title")}
             classes={{ root: classes.tab }}
           />
           <Tab
-            value={"closed"}
-            icon={<CheckBoxIcon />}
+            value="closed"
             label={i18n.t("tickets.tabs.closed.title")}
             classes={{ root: classes.tab }}
           />
           <Tab
-            value={"search"}
-            icon={<SearchIcon />}
+            value="search"
             label={i18n.t("tickets.tabs.search.title")}
             classes={{ root: classes.tab }}
           />
         </Tabs>
       </Paper>
+
       <Paper square elevation={0} className={classes.ticketOptionsBox}>
         {tab === "search" ? (
           <div className={classes.serachInputWrapper}>
@@ -193,8 +270,8 @@ const TicketsManager = () => {
         ) : (
           <>
             <Button
-              variant="outlined"
-              color="primary"
+              variant="contained"
+              className={classes.newBtn}
               onClick={() => setNewTicketModalOpen(true)}
             >
               {i18n.t("ticketsManager.buttons.newTicket")}
@@ -204,7 +281,11 @@ const TicketsManager = () => {
               perform="tickets-manager:showall"
               yes={() => (
                 <FormControlLabel
-                  label={i18n.t("tickets.buttons.showAll")}
+                  label={
+                    <Typography className={classes.showAllLabel}>
+                      {i18n.t("tickets.buttons.showAll")}
+                    </Typography>
+                  }
                   labelPlacement="start"
                   control={
                     <Switch
@@ -214,7 +295,7 @@ const TicketsManager = () => {
                         setShowAllTickets((prevState) => !prevState)
                       }
                       name="showAllTickets"
-                      color="primary"
+                      className={classes.switch}
                     />
                   }
                 />
@@ -229,39 +310,45 @@ const TicketsManager = () => {
           onChange={(values) => setSelectedQueueIds(values)}
         />
       </Paper>
+
       <TabPanel value={tab} name="open" className={classes.ticketsWrapper}>
-        <Tabs
-          value={tabOpen}
-          onChange={handleChangeTabOpen}
-          indicatorColor="primary"
-          textColor="primary"
-          variant="fullWidth"
-        >
-          <Tab
-            label={
-              <Badge
-                className={classes.badge}
-                badgeContent={openCount}
-                color="primary"
-              >
-                {i18n.t("ticketsList.assignedHeader")}
-              </Badge>
-            }
-            value={"open"}
-          />
-          <Tab
-            label={
-              <Badge
-                className={classes.badge}
-                badgeContent={pendingCount}
-                color="secondary"
-              >
-                {i18n.t("ticketsList.pendingHeader")}
-              </Badge>
-            }
-            value={"pending"}
-          />
-        </Tabs>
+        <div className={classes.subTabsWrapper}>
+          <Tabs
+            value={tabOpen}
+            onChange={handleChangeTabOpen}
+            indicatorColor="primary"
+            textColor="primary"
+            variant="fullWidth"
+            classes={{ indicator: classes.tabsIndicator }}
+          >
+            <Tab
+              label={
+                <Badge
+                  className={classes.badge}
+                  badgeContent={openCount}
+                  color="primary"
+                >
+                  {i18n.t("ticketsList.assignedHeader")}
+                </Badge>
+              }
+              value="open"
+              classes={{ root: classes.subTab }}
+            />
+            <Tab
+              label={
+                <Badge
+                  className={classes.badge}
+                  badgeContent={pendingCount}
+                  color="secondary"
+                >
+                  {i18n.t("ticketsList.pendingHeader")}
+                </Badge>
+              }
+              value="pending"
+              classes={{ root: classes.subTab }}
+            />
+          </Tabs>
+        </div>
         <Paper className={classes.ticketsWrapper}>
           <TicketsList
             status="open"
@@ -278,17 +365,19 @@ const TicketsManager = () => {
           />
         </Paper>
       </TabPanel>
+
       <TabPanel value={tab} name="closed" className={classes.ticketsWrapper}>
         <TicketsList
           status="closed"
-          showAll={true}
+          showAll={user.profile === "admin"}
           selectedQueueIds={selectedQueueIds}
         />
       </TabPanel>
+
       <TabPanel value={tab} name="search" className={classes.ticketsWrapper}>
         <TicketsList
           searchParam={searchParam}
-          showAll={true}
+          showAll={user.profile === "admin"}
           selectedQueueIds={selectedQueueIds}
         />
       </TabPanel>

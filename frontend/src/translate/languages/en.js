@@ -270,10 +270,16 @@ const messages = {
       },
       newTicketModal: {
         title: "Create Ticket",
-        fieldLabel: "Type to search for a contact",
+        titleSub: "Start a new conversation",
+        contactSection: "Contact",
+        fieldLabel: "Search by name or number",
         add: "Add",
+        change: "Change",
+        queueSection: "Queue",
+        queueLabel: "Select queue",
+        queueNone: "No queue",
         buttons: {
-          ok: "Save",
+          ok: "Start chat",
           cancel: "Cancel",
         },
       },

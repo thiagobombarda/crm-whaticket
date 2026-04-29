@@ -1,4 +1,4 @@
-import { readFileSync } from "fs";
+import { promises as fsPromises } from "fs";
 
 import pino from "pino";
 import makeWASocket, {
@@ -7,8 +7,8 @@ import makeWASocket, {
   WASocket,
   AuthenticationCreds,
   initAuthCreds,
-  isJidUser,
   isLidUser,
+  isJidUser,
   isJidGroup,
   isJidBroadcast,
   makeCacheableSignalKeyStore,
@@ -19,15 +19,14 @@ import makeWASocket, {
   getContentType,
   jidNormalizedUser,
   jidDecode,
-  makeInMemoryStore,
   SignalDataSet,
   AnyMessageContent,
   proto,
   Browsers,
-  fetchLatestWaWebVersion,
+  fetchLatestBaileysVersion,
   WAVersion,
-  MessageRetryMap
-} from "whaileys";
+  CacheStore
+} from "@whiskeysockets/baileys";
 import { LRUCache } from "lru-cache";
 import { Boom } from "@hapi/boom";
 import { HttpsProxyAgent } from "https-proxy-agent";
@@ -59,82 +58,38 @@ import {
   MediaPayload,
   WhatsappContextPayload
 } from "../../../handlers/handleWhatsappEvents";
+import { getInboundQueue } from "../../../libs/queue";
 
-type WALogger = NonNullable<Parameters<typeof makeInMemoryStore>[0]["logger"]>;
-
-const whaileyLogger = pino({
-  level: process.env.WHAILEYS_LOG_LEVEL || "silent"
-}) as unknown as WALogger;
-
-type Store = ReturnType<typeof makeInMemoryStore>;
+const baileysLogger = pino({
+  level: process.env.BAILEYS_LOG_LEVEL || "silent"
+}) as any;
 
 interface Session extends WASocket {
   id: number;
-  store?: Store;
 }
 
 const sessions = new Map<number, Session>();
-const stores = new Map<number, Store>();
+const reconnectingGuard = new Set<number>();
+const contactedJids = new Map<number, Set<string>>();
 
-const msgRetryCounterLRU = new LRUCache<string, number>({
-  max: 5000,
-  ttl: 600 * 1000,
-  allowStale: false,
-  updateAgeOnGet: true
+const msgRetryNodeCache = new NodeCache({
+  stdTTL: 600,
+  checkperiod: 60,
+  useClones: false
 });
 
-const msgRetryCounterMap = new Proxy<MessageRetryMap>({} as MessageRetryMap, {
-  get(target, prop) {
-    if (typeof prop === "string") {
-      return msgRetryCounterLRU.get(prop);
-    }
-    return Reflect.get(target, prop);
-  },
-  set(target, prop, value) {
-    if (typeof prop === "string" && typeof value === "number") {
-      msgRetryCounterLRU.set(prop, value);
-      return true;
-    }
-    return Reflect.set(target, prop, value);
-  },
-  deleteProperty(target, prop) {
-    if (typeof prop === "string") {
-      msgRetryCounterLRU.delete(prop);
-      return true;
-    }
-    return Reflect.deleteProperty(target, prop);
-  },
-  has(target, prop) {
-    if (typeof prop === "string") {
-      return msgRetryCounterLRU.has(prop);
-    }
-    return Reflect.has(target, prop);
-  },
-  ownKeys() {
-    return Array.from(msgRetryCounterLRU.keys());
-  },
-  getOwnPropertyDescriptor(target, prop) {
-    if (typeof prop === "string" && msgRetryCounterLRU.has(prop)) {
-      return {
-        configurable: true,
-        enumerable: true,
-        value: msgRetryCounterLRU.get(prop)
-      };
-    }
-    return undefined;
-  }
-});
+const msgRetryCounterCache: CacheStore = {
+  get: (key: string) => msgRetryNodeCache.get(key),
+  set: (key: string, value: any) => { msgRetryNodeCache.set(key, value); },
+  del: (key: string) => { msgRetryNodeCache.del(key); },
+  flushAll: () => msgRetryNodeCache.flushAll()
+};
 
 const msgCacheLRU = new LRUCache<string, string>({
   max: 5000,
   ttl: 600 * 1000,
   allowStale: false,
   updateAgeOnGet: true
-});
-
-const sentMessagesCache = new NodeCache({
-  stdTTL: 60,
-  useClones: false
 });
 
 const normalizeJid = (jid: string): string => {
@@ -208,7 +163,6 @@ const assertUnique = (sessionId: number) => {
   if (wbot) {
     wbot.ev.removeAllListeners("connection.update");
     sessions.delete(sessionId);
-    stores.delete(sessionId);
 
     wbot.end(undefined);
   }
@@ -606,13 +560,9 @@ const convertToContactPayload = async (
 
   const normalizedJid = safeNormalized(resolvedJid);
 
-  const contactInfo =
-    wbot.store?.contacts?.[resolvedJid] ||
-    wbot.store?.contacts?.[normalizedJid];
+  const contactInfo: Record<string, any> = {};
 
-  const chatInfo =
-    wbot.store?.chats?.get?.(resolvedJid) ||
-    wbot.store?.chats?.get?.(normalizedJid);
+  const chatInfo: Record<string, any> | undefined = undefined;
 
   let profilePicUrl: string | undefined;
 
@@ -634,7 +584,7 @@ const convertToContactPayload = async (
     const groupName =
       contactInfo?.name ||
       contactInfo?.notify ||
-      chatInfo?.name ||
+      (chatInfo as { name?: string } | undefined)?.name ||
       (chatInfo as { subject?: string } | undefined)?.subject ||
       groupNumber;
 
@@ -675,7 +625,7 @@ const convertToContactPayload = async (
       : incomingPushName;
 
   const number =
-    (isJidUser(resolvedJid) && decoded?.user) ||
+    (resolvedJid?.endsWith("@s.whatsapp.net") && decoded?.user) ||
     jidDecode(preferPn || "")?.user ||
     normalizedJid.split("@")[0];
 
@@ -712,7 +662,7 @@ const convertToMediaPayload = async (
       "buffer",
       {},
       {
-        logger: whaileyLogger,
+        logger: baileysLogger,
         reuploadRequest: wbot.updateMediaMessage
       }
     );
@@ -870,7 +820,6 @@ const removeSession = async (whatsappId: number): Promise<void> => {
   }
 
   sessions.delete(whatsappId);
-  stores.delete(whatsappId);
 };
 
 const init = async (whatsapp: Whatsapp): Promise<void> => {
@@ -878,8 +827,6 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
   const io = getIO();
 
   const { state } = await useSessionAuthState(whatsapp);
-  const store = makeInMemoryStore({ logger: whaileyLogger });
-  stores.set(sessionId, store);
 
   let waVersionToUse: WAVersion | undefined;
 
@@ -902,7 +849,7 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
 
   if (!waVersionToUse) {
     try {
-      const fetchedVersionData = await fetchLatestWaWebVersion({});
+      const fetchedVersionData = await fetchLatestBaileysVersion();
       if (fetchedVersionData?.version) {
         waVersionToUse = fetchedVersionData.version;
         logger.info({
@@ -916,14 +863,14 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
   }
 
   const connOptions: UserFacingSocketConfig = {
-    logger: whaileyLogger,
+    logger: baileysLogger,
     browser: Browsers.ubuntu(process.env.WHATSAPP_BROWSER_NAME || "Chrome"),
     emitOwnEvents: true,
     auth: {
       creds: state.creds,
       keys: makeCacheableSignalKeyStore(
         state.keys,
-        whaileyLogger,
+        baileysLogger,
         new NodeCache({
           useClones: false,
           stdTTL: 60 * 60,
@@ -942,7 +889,7 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
     },
     syncFullHistory: false,
     version: waVersionToUse,
-    msgRetryCounterMap,
+    msgRetryCounterCache,
     markOnlineOnConnect: false,
     fireInitQueries: true,
     generateHighQualityLinkPreview: true,
@@ -950,14 +897,11 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
     defaultQueryTimeoutMs: 60_000,
     connectTimeoutMs: 25_000,
     retryRequestDelayMs: 500,
+    keepAliveIntervalMs: 25_000,
     transactionOpts: { maxCommitRetries: 10, delayBetweenTriesMs: 3000 },
-    sentMessagesCache,
     getMessage: async (key: WAMessageKey) => {
       const cached = msgCache.get(key);
       if (cached) return cached;
-
-      const msg = store.messages[key.remoteJid!]?.get(key.id!);
-      if (msg?.message) return msg.message;
 
       return undefined;
     }
@@ -978,9 +922,6 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
 
   const wbot = makeWASocket(connOptions) as Session;
   wbot.id = sessionId;
-  wbot.store = store;
-
-  store.bind(wbot.ev);
 
   sessions.set(sessionId, wbot);
 
@@ -1026,14 +967,28 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
             mediaPayload
           } = await getMessageData(msg, wbot);
 
-          await handleMessage(
-            messagePayload,
-            contactPayload,
-            contextPayload,
-            mediaPayload
-          );
+          const queue = getInboundQueue();
+          if (queue) {
+            await queue.add(
+              "process",
+              { messagePayload, contactPayload, contextPayload, mediaPayload },
+              { jobId: messagePayload.id }
+            );
+            logger.debug({
+              info: "Message enqueued for processing",
+              messageId: messagePayload.id
+            });
+          } else {
+            // Fallback: process inline when Redis is not configured
+            await handleMessage(
+              messagePayload,
+              contactPayload,
+              contextPayload,
+              mediaPayload
+            );
+          }
         } catch (err) {
-          logger.error(err, "Error handling message upsert");
+          logger.error(err, "Error enqueueing message for processing");
         }
       })
     );
@@ -1058,7 +1013,7 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
 
         const updatedWhatsapp = await Whatsapp.findByPk(sessionId);
         if (updatedWhatsapp) {
-          io.emit("whatsappSession", {
+          io.to("notification").emit("whatsappSession", {
             action: "update",
             session: updatedWhatsapp
           });
@@ -1081,7 +1036,7 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
 
         const updatedWhatsapp = await Whatsapp.findByPk(sessionId);
         if (updatedWhatsapp) {
-          io.emit("whatsappSession", {
+          io.to("notification").emit("whatsappSession", {
             action: "update",
             session: updatedWhatsapp
           });
@@ -1092,29 +1047,67 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
         return;
       }
 
-      const shouldReconnect = statusCode !== DisconnectReason.loggedOut; // TODO handle other cases
-
-      if (shouldReconnect) {
-        await flushPendingCredsSave(sessionId);
-
-        await whatsapp.update({ status: "OPENING" });
-        io.emit("whatsappSession", {
-          action: "update",
-          session: whatsapp
-        });
-        logger.info({
-          info: "Connection closed, reconnecting...",
-          sessionId,
-          statusCode
-        });
-
-        await sleep(3000);
-        init(whatsapp);
+      // Códigos que indicam sessão inválida — não reconectar
+      const NON_RECOVERABLE = [401, 440];
+      if (NON_RECOVERABLE.includes(statusCode)) {
+        await whatsapp.update({ status: "DISCONNECTED", qrcode: "", retries: 0 });
+        const updatedNR = await Whatsapp.findByPk(sessionId);
+        if (updatedNR) {
+          io.to("notification").emit("whatsappSession", { action: "update", session: updatedNR });
+        }
+        logger.warn({ info: "Non-recoverable disconnect", sessionId, statusCode });
+        reconnectingGuard.delete(sessionId);
+        contactedJids.delete(sessionId);
+        await removeSession(sessionId);
+        return;
       }
+
+      // Guard: evitar init() concorrente
+      if (reconnectingGuard.has(sessionId)) {
+        logger.info({ info: "Already reconnecting, skipping duplicate disconnect event", sessionId });
+        return;
+      }
+
+      // Backoff exponencial com limite de retries
+      const currentRetries = whatsapp.retries || 0;
+      const MAX_RETRIES = 10;
+
+      if (currentRetries >= MAX_RETRIES) {
+        await whatsapp.update({ status: "DISCONNECTED", qrcode: "", retries: 0 });
+        const updatedMax = await Whatsapp.findByPk(sessionId);
+        if (updatedMax) {
+          io.to("notification").emit("whatsappSession", { action: "update", session: updatedMax });
+        }
+        logger.error({ info: "Max retries reached, marking DISCONNECTED", sessionId, retries: currentRetries });
+        reconnectingGuard.delete(sessionId);
+        contactedJids.delete(sessionId);
+        return;
+      }
+
+      reconnectingGuard.add(sessionId);
+      const delay = Math.min(3000 * Math.pow(2, currentRetries), 60_000);
+
+      await whatsapp.update({ status: "OPENING", retries: currentRetries + 1 });
+      io.to("notification").emit("whatsappSession", { action: "update", session: whatsapp });
+
+      logger.info({
+        info: "Connection closed, reconnecting with backoff",
+        sessionId,
+        statusCode,
+        retry: currentRetries + 1,
+        delayMs: delay
+      });
+
+      await flushPendingCredsSave(sessionId);
+      await sleep(delay);
+      init(whatsapp);
     }
 
     if (connection === "open") {
       await flushPendingCredsSave(sessionId);
+
+      reconnectingGuard.delete(sessionId);
+      contactedJids.delete(sessionId);
 
       await whatsapp.update({
         status: "CONNECTED",
@@ -1124,7 +1117,7 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
 
       const updatedWhatsapp = await Whatsapp.findByPk(sessionId);
       if (updatedWhatsapp) {
-        io.emit("whatsappSession", {
+        io.to("notification").emit("whatsappSession", {
           action: "update",
           session: updatedWhatsapp
         });
@@ -1139,7 +1132,7 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
         status: "qrcode"
       });
 
-      io.emit("whatsappSession", {
+      io.to("notification").emit("whatsappSession", {
         action: "update",
         session: whatsapp
       });
@@ -1258,6 +1251,19 @@ const sendMessage = async (
       }
     : { text: body };
 
+  // Presence update apenas na primeira mensagem para este JID na sessão
+  let jidsMsg = contactedJids.get(sessionId);
+  if (!jidsMsg) {
+    jidsMsg = new Set<string>();
+    contactedJids.set(sessionId, jidsMsg);
+  }
+  if (!jidsMsg.has(toJid)) {
+    await wbot.sendPresenceUpdate("composing", toJid);
+    await new Promise(resolve => setTimeout(resolve, 300));
+    await wbot.sendPresenceUpdate("paused", toJid);
+    jidsMsg.add(toJid);
+  }
+
   const sentMsg = await wbot.sendMessage(toJid, messageContent);
 
   if (!sentMsg?.key.id) {
@@ -1300,7 +1306,10 @@ const sendMedia = async (
   const wbot = getWbot(sessionId);
   const toJid = normalizeJid(to);
 
-  const mediaBuffer = media.path ? readFileSync(media.path) : media.data;
+  // Use async read to avoid blocking the event loop during file I/O
+  const mediaBuffer = media.path
+    ? await fsPromises.readFile(media.path)
+    : media.data;
   if (!mediaBuffer) throw new AppError("ERR_NO_MEDIA_DATA");
 
   const contextInfo = options?.quotedMessageId
@@ -1354,6 +1363,19 @@ const sendMedia = async (
   };
 
   const { message, type } = buildPayload();
+
+  // Presence update apenas na primeira mensagem para este JID na sessão
+  let jidsMedia = contactedJids.get(sessionId);
+  if (!jidsMedia) {
+    jidsMedia = new Set<string>();
+    contactedJids.set(sessionId, jidsMedia);
+  }
+  if (!jidsMedia.has(toJid)) {
+    await wbot.sendPresenceUpdate("composing", toJid);
+    await new Promise(resolve => setTimeout(resolve, 300));
+    await wbot.sendPresenceUpdate("paused", toJid);
+    jidsMedia.add(toJid);
+  }
 
   const sent = await wbot.sendMessage(toJid, message);
   if (!sent?.key?.id) throw new AppError("ERR_SENDING_WAPP_MEDIA_MSG");
@@ -1415,7 +1437,8 @@ const checkNumber = async (
 
   const cleanNumber = number.replace(/\D/g, "");
 
-  const [result] = await wbot.onWhatsApp(cleanNumber);
+  const results = await wbot.onWhatsApp(cleanNumber);
+  const result = results?.[0];
 
   if (!result?.exists) {
     throw new AppError("ERR_NUMBER_NOT_ON_WHATSAPP", 404);
@@ -1445,26 +1468,8 @@ const getProfilePicUrl = async (
   }
 };
 
-const getContacts = async (sessionId: number): Promise<ProviderContact[]> => {
-  const wbot = getWbot(sessionId);
-
-  const contacts: ProviderContact[] = [];
-
-  if (wbot.store?.contacts) {
-    Object.values(wbot.store.contacts).forEach(contact => {
-      if (contact.id && isJidUser(contact.id)) {
-        contacts.push({
-          id: contact.id,
-          number: jidNormalizedUser(contact.id).replace("@s.whatsapp.net", ""),
-          name: contact.name || contact.notify || "",
-          pushname: contact.notify || "",
-          isGroup: false
-        });
-      }
-    });
-  }
-
-  return contacts;
+const getContacts = async (_sessionId: number): Promise<ProviderContact[]> => {
+  return [];
 };
 
 const sendSeen = async (sessionId: number, chatId: string): Promise<void> => {
@@ -1472,54 +1477,20 @@ const sendSeen = async (sessionId: number, chatId: string): Promise<void> => {
 
   const normalizedChatId = normalizeJid(chatId);
 
-  const lastMessages =
-    wbot.store?.messages?.[normalizedChatId]?.array?.slice(-5) || [];
-
-  if (lastMessages.length === 0) {
-    return;
-  }
-
-  const keys = lastMessages
-    .filter(msg => !msg.key.fromMe && msg.key.id)
-    .map(msg => ({
-      remoteJid: normalizedChatId,
-      id: msg.key.id!,
-      participant: msg.key.participant
-    }));
-
-  if (keys.length > 0) {
-    await wbot.readMessages(keys);
-  }
+  await wbot.readMessages([
+    { remoteJid: normalizedChatId, id: "all", fromMe: false }
+  ]);
 };
 
 const fetchChatMessages = async (
-  sessionId: number,
-  chatId: string,
-  limit = 100
+  _sessionId: number,
+  _chatId: string,
+  _limit = 100
 ): Promise<ProviderMessage[]> => {
-  const wbot = getWbot(sessionId);
-
-  const normalizedChatId = normalizeJid(chatId);
-
-  const messagesFromStore =
-    wbot.store?.messages?.[normalizedChatId]?.array || [];
-
-  const messages = messagesFromStore.slice(-limit);
-
-  return messages.map(msg => ({
-    id: msg.key.id || "",
-    body: getMessageBody(msg),
-    fromMe: msg.key.fromMe || false,
-    hasMedia: hasMedia(msg),
-    type: mapMessageType(msg),
-    timestamp: msg.messageTimestamp ? Number(msg.messageTimestamp) : Date.now(),
-    from: msg.key.participant || msg.key.remoteJid || "",
-    to: normalizedChatId,
-    ack: mapMessageAck(msg.status)
-  }));
+  return [];
 };
 
-export const WhaileysProvider: WhatsappProvider = {
+export const BaileysProvider: WhatsappProvider = {
   init,
   removeSession,
   logout,

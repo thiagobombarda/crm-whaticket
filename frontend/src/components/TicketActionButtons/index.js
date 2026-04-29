@@ -1,9 +1,9 @@
 import React, { useContext, useState } from "react";
-import { useHistory } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 import { makeStyles } from "@material-ui/core/styles";
 import { IconButton } from "@material-ui/core";
-import { MoreVert, Replay } from "@material-ui/icons";
+import { MoreVertical as MoreVert, RotateCcw as Replay } from "lucide-react";
 
 import { i18n } from "../../translate/i18n";
 import api from "../../services/api";
@@ -26,7 +26,7 @@ const useStyles = makeStyles(theme => ({
 
 const TicketActionButtons = ({ ticket }) => {
 	const classes = useStyles();
-	const history = useHistory();
+	const navigate = useNavigate();
 	const [anchorEl, setAnchorEl] = useState(null);
 	const [loading, setLoading] = useState(false);
 	const ticketOptionsMenuOpen = Boolean(anchorEl);
@@ -50,9 +50,9 @@ const TicketActionButtons = ({ ticket }) => {
 
 			setLoading(false);
 			if (status === "open") {
-				history.push(`/tickets/${ticket.id}`);
+				navigate(`/tickets/${ticket.id}`);
 			} else {
-				history.push("/tickets");
+				navigate("/tickets");
 			}
 		} catch (err) {
 			setLoading(false);
@@ -65,7 +65,7 @@ const TicketActionButtons = ({ ticket }) => {
 			{ticket.status === "closed" && (
 				<ButtonWithSpinner
 					loading={loading}
-					startIcon={<Replay />}
+					startIcon={<Replay size={18} />}
 					size="small"
 					onClick={e => handleUpdateTicketStatus(e, "open", user?.id)}
 				>
@@ -76,7 +76,7 @@ const TicketActionButtons = ({ ticket }) => {
 				<>
 					<ButtonWithSpinner
 						loading={loading}
-						startIcon={<Replay />}
+						startIcon={<Replay size={18} />}
 						size="small"
 						onClick={e => handleUpdateTicketStatus(e, "pending", null)}
 					>
@@ -92,7 +92,7 @@ const TicketActionButtons = ({ ticket }) => {
 						{i18n.t("messagesList.header.buttons.resolve")}
 					</ButtonWithSpinner>
 					<IconButton onClick={handleOpenTicketOptionsMenu}>
-						<MoreVert />
+						<MoreVert size={20} />
 					</IconButton>
 					<TicketOptionsMenu
 						ticket={ticket}

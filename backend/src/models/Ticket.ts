@@ -4,6 +4,7 @@ import {
   CreatedAt,
   UpdatedAt,
   Model,
+  DataType,
   PrimaryKey,
   ForeignKey,
   BelongsTo,
@@ -38,6 +39,9 @@ class Ticket extends Model<Ticket> {
   @Column
   isGroup: boolean;
 
+  @Column
+  notes: string;
+
   @CreatedAt
   createdAt: Date;
 
@@ -45,8 +49,8 @@ class Ticket extends Model<Ticket> {
   updatedAt: Date;
 
   @ForeignKey(() => User)
-  @Column
-  userId: number;
+  @Column(DataType.INTEGER)
+  userId: number | null;
 
   @BelongsTo(() => User)
   user: User;
@@ -66,8 +70,8 @@ class Ticket extends Model<Ticket> {
   whatsapp: Whatsapp;
 
   @ForeignKey(() => Queue)
-  @Column
-  queueId: number;
+  @Column(DataType.INTEGER)
+  queueId: number | null;
 
   @BelongsTo(() => Queue)
   queue: Queue;

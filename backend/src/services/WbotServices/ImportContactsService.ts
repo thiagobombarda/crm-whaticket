@@ -30,7 +30,7 @@ const ImportContactsService = async (userId: number): Promise<void> => {
 
         if (numberExists) return null;
 
-        return Contact.create({ number, name });
+        return Contact.create({ number, name } as any);
       })
     );
   }

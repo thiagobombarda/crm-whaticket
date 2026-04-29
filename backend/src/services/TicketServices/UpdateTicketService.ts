@@ -2,15 +2,22 @@ import CheckContactOpenTickets from "../../helpers/CheckContactOpenTickets";
 import SetTicketMessagesAsRead from "../../helpers/SetTicketMessagesAsRead";
 import { getIO } from "../../libs/socket";
 import Ticket from "../../models/Ticket";
+import Contact from "../../models/Contact";
+import Queue from "../../models/Queue";
+import User from "../../models/User";
+import Whatsapp from "../../models/Whatsapp";
 import SendWhatsAppMessage from "../WbotServices/SendWhatsAppMessage";
 import ShowWhatsAppService from "../WhatsappService/ShowWhatsAppService";
 import ShowTicketService from "./ShowTicketService";
+import { invalidateTicketCache } from "../MessageServices/CreateMessageService";
+import { invalidateTicketListCache } from "./ListTicketsService";
 
 interface TicketData {
   status?: string;
   userId?: number;
   queueId?: number;
   whatsappId?: number;
+  notes?: string;
 }
 
 interface Request {
@@ -28,7 +35,7 @@ const UpdateTicketService = async ({
   ticketData,
   ticketId
 }: Request): Promise<Response> => {
-  const { status, userId, queueId, whatsappId } = ticketData;
+  const { status, userId, queueId, whatsappId, notes } = ticketData;
 
   const ticket = await ShowTicketService(ticketId);
   await SetTicketMessagesAsRead(ticket);
@@ -47,7 +54,8 @@ const UpdateTicketService = async ({
   await ticket.update({
     status,
     queueId,
-    userId
+    userId,
+    notes
   });
 
   if (whatsappId) {
@@ -56,7 +64,21 @@ const UpdateTicketService = async ({
     });
   }
 
-  await ticket.reload();
+  await ticket.reload({
+    include: [
+      { model: Contact, as: "contact", attributes: ["id", "name", "number", "profilePicUrl"] },
+      { model: Queue, as: "queue", attributes: ["id", "name", "color"] },
+      { model: Whatsapp, as: "whatsapp", attributes: ["name"] },
+      { model: User, as: "user", attributes: ["id", "name"] },
+    ],
+  });
+
+  // Evict cached ticket relations so the next message uses fresh data
+  invalidateTicketCache(ticket.id);
+
+  // Evict list cache for the affected user so the next poll sees fresh data
+  invalidateTicketListCache(ticket.userId?.toString()).catch(() => {});
+  invalidateTicketListCache().catch(() => {}); // also clear admin (showAll) caches
 
   const io = getIO();
 

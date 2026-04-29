@@ -1,10 +1,19 @@
 import React from "react";
-import Typography from "@material-ui/core/Typography";
 
-export default function Title(props) {
-	return (
-		<Typography variant="h5" color="primary" gutterBottom>
-			{props.children}
-		</Typography>
-	);
+export default function Title({ children }) {
+  return (
+    <h2
+      style={{
+        fontFamily: '"Fraunces", Georgia, serif',
+        fontWeight: 700,
+        fontSize: 26,
+        color: "#0A0F1E",
+        letterSpacing: "-0.5px",
+        margin: 0,
+        lineHeight: 1.2,
+      }}
+    >
+      {children}
+    </h2>
+  );
 }

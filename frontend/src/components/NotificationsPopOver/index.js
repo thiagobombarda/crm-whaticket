@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useContext } from "react";
-import { useHistory } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { format } from "date-fns";
 import openSocket from "../../services/socket-io";
 import useSound from "use-sound";
@@ -11,7 +11,7 @@ import ListItem from "@material-ui/core/ListItem";
 import ListItemText from "@material-ui/core/ListItemText";
 import { makeStyles } from "@material-ui/core/styles";
 import Badge from "@material-ui/core/Badge";
-import ChatIcon from "@material-ui/icons/Chat";
+import { MessageSquare as ChatIcon } from "lucide-react";
 
 import TicketListItem from "../TicketListItem";
 import { i18n } from "../../translate/i18n";
@@ -45,9 +45,10 @@ const useStyles = makeStyles(theme => ({
 const NotificationsPopOver = () => {
 	const classes = useStyles();
 
-	const history = useHistory();
+	const navigate = useNavigate();
+	const location = useLocation();
 	const { user } = useContext(AuthContext);
-	const ticketIdUrl = +history.location.pathname.split("/")[2];
+	const ticketIdUrl = +location.pathname.split("/")[2];
 	const ticketIdRef = useRef(ticketIdUrl);
 	const anchorEl = useRef();
 	const [isOpen, setIsOpen] = useState(false);
@@ -197,7 +198,7 @@ const NotificationsPopOver = () => {
 				className={classes.iconButton}
 			>
 				<Badge badgeContent={notifications.length} color="secondary">
-					<ChatIcon />
+					<ChatIcon size={20} />
 				</Badge>
 			</IconButton>
 			<Popover

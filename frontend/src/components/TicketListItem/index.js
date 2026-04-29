@@ -1,263 +1,431 @@
 import React, { useState, useEffect, useRef, useContext } from "react";
 
-import { useHistory, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { parseISO, format, isSameDay } from "date-fns";
 import clsx from "clsx";
 
 import { makeStyles } from "@material-ui/core/styles";
-import { green } from "@material-ui/core/colors";
 import ListItem from "@material-ui/core/ListItem";
 import ListItemText from "@material-ui/core/ListItemText";
 import ListItemAvatar from "@material-ui/core/ListItemAvatar";
 import Typography from "@material-ui/core/Typography";
 import Avatar from "@material-ui/core/Avatar";
-import Divider from "@material-ui/core/Divider";
-import Badge from "@material-ui/core/Badge";
+import { Tooltip } from "@material-ui/core";
 
 import { i18n } from "../../translate/i18n";
 
 import api from "../../services/api";
 import ButtonWithSpinner from "../ButtonWithSpinner";
 import MarkdownWrapper from "../MarkdownWrapper";
-import { Tooltip } from "@material-ui/core";
 import { AuthContext } from "../../context/Auth/AuthContext";
 import toastError from "../../errors/toastError";
 
-const useStyles = makeStyles(theme => ({
-	ticket: {
-		position: "relative",
-	},
+const avatarColors = [
+  "#E8F5E9", "#E3F2FD", "#FFF3E0", "#FCE4EC",
+  "#F3E5F5", "#E0F7FA", "#FFF8E1", "#EFEBE9",
+];
 
-	pendingTicket: {
-		cursor: "unset",
-	},
+const getInitials = (name = "") =>
+  name
+    .split(" ")
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join("")
+    .toUpperCase();
 
-	noTicketsDiv: {
-		display: "flex",
-		height: "100px",
-		margin: 40,
-		flexDirection: "column",
-		alignItems: "center",
-		justifyContent: "center",
-	},
+const getAvatarColor = (name = "") => {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  return avatarColors[Math.abs(hash) % avatarColors.length];
+};
 
-	noTicketsText: {
-		textAlign: "center",
-		color: "rgb(104, 121, 146)",
-		fontSize: "14px",
-		lineHeight: "1.4",
-	},
+const hexToRgba = (hex, alpha) => {
+  const h = hex.replace("#", "");
+  const r = parseInt(h.substring(0, 2), 16);
+  const g = parseInt(h.substring(2, 4), 16);
+  const b = parseInt(h.substring(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+};
 
-	noTicketsTitle: {
-		textAlign: "center",
-		fontSize: "16px",
-		fontWeight: "600",
-		margin: "0px",
-	},
+const useStyles = makeStyles(() => ({
+  ticket: {
+    position: "relative",
+    padding: "11px 14px 11px 18px",
+    borderBottom: "1px solid #F5F5F4",
+    alignItems: "flex-start",
+    transition: "background-color 150ms ease",
+    "&:hover": {
+      backgroundColor: "rgba(37,211,102,0.04)",
+    },
+    "&.Mui-selected": {
+      backgroundColor: "rgba(37,211,102,0.08)",
+      "&::before": {
+        content: '""',
+        position: "absolute",
+        left: 0,
+        top: 0,
+        bottom: 0,
+        width: 3,
+        backgroundColor: "#25D366",
+        borderRadius: "0 2px 2px 0",
+      },
+      "&:hover": {
+        backgroundColor: "rgba(37,211,102,0.10)",
+      },
+    },
+  },
 
-	contactNameWrapper: {
-		display: "flex",
-		justifyContent: "space-between",
-	},
+  pendingTicket: {
+    cursor: "unset",
+  },
 
-	lastMessageTime: {
-		justifySelf: "flex-end",
-	},
+  queueBar: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 3,
+    borderRadius: "0 2px 2px 0",
+  },
 
-	closedBadge: {
-		alignSelf: "center",
-		justifySelf: "flex-end",
-		marginRight: 32,
-		marginLeft: "auto",
-	},
+  avatarWrapper: {
+    position: "relative",
+    marginRight: 12,
+    minWidth: 0,
+    paddingTop: 2,
+  },
 
-	contactLastMessage: {
-		paddingRight: 20,
-	},
+  avatar: {
+    width: 42,
+    height: 42,
+    fontSize: 15,
+    fontFamily: '"DM Sans", system-ui, sans-serif',
+    fontWeight: 700,
+    border: "1px solid #E7E5E4",
+  },
 
-	newMessagesCount: {
-		alignSelf: "center",
-		marginRight: 8,
-		marginLeft: "auto",
-	},
+  unreadBadge: {
+    position: "absolute",
+    top: -3,
+    right: -3,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: "#25D366",
+    color: "#ffffff",
+    fontSize: 10,
+    fontWeight: 700,
+    fontFamily: '"DM Sans", system-ui, sans-serif',
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "0 4px",
+    boxSizing: "border-box",
+    border: "1.5px solid #ffffff",
+  },
 
-	badgeStyle: {
-		color: "white",
-		backgroundColor: green[500],
-	},
+  content: {
+    flex: 1,
+    minWidth: 0,
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+  },
 
-	acceptButton: {
-		position: "absolute",
-		left: "50%",
-	},
+  row1: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 6,
+  },
 
-	ticketQueueColor: {
-		flex: "none",
-		width: "8px",
-		height: "100%",
-		position: "absolute",
-		top: "0%",
-		left: "0%",
-	},
+  contactName: {
+    fontFamily: '"DM Sans", system-ui, sans-serif',
+    fontWeight: 600,
+    fontSize: 13.5,
+    color: "#1C1917",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    flex: 1,
+    minWidth: 0,
+  },
 
-	userTag: {
-		position: "absolute",
-		marginRight: 5,
-		right: 5,
-		bottom: 5,
-		background: "#2576D2",
-		color: "#ffffff",
-		border: "1px solid #CCC",
-		padding: 1,
-		paddingLeft: 5,
-		paddingRight: 5,
-		borderRadius: 10,
-		fontSize: "0.9em"
-	},
+  contactNameUnread: {
+    fontWeight: 700,
+    color: "#0A0F1E",
+  },
+
+  timeLabel: {
+    fontFamily: '"DM Sans", system-ui, sans-serif',
+    fontSize: 11.5,
+    color: "#78716C",
+    whiteSpace: "nowrap",
+    flexShrink: 0,
+  },
+
+  timeLabelUnread: {
+    color: "#25D366",
+    fontWeight: 600,
+  },
+
+  lastMessage: {
+    fontFamily: '"DM Sans", system-ui, sans-serif',
+    fontSize: 12.5,
+    color: "#78716C",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    lineHeight: 1.4,
+  },
+
+  lastMessageUnread: {
+    color: "#44403C",
+    fontWeight: 600,
+  },
+
+  unreadCount: {
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: "#25D366",
+    color: "#ffffff",
+    fontSize: 10,
+    fontWeight: 700,
+    fontFamily: '"DM Sans", system-ui, sans-serif',
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "0 5px",
+    boxSizing: "border-box",
+    flexShrink: 0,
+    marginLeft: 6,
+  },
+
+  row3: {
+    display: "flex",
+    alignItems: "center",
+    gap: 5,
+    flexWrap: "wrap",
+    marginTop: 2,
+  },
+
+  queuePill: {
+    display: "inline-flex",
+    alignItems: "center",
+    borderRadius: 10,
+    padding: "2px 8px",
+    fontSize: 10.5,
+    fontFamily: '"DM Sans", system-ui, sans-serif',
+    fontWeight: 600,
+    lineHeight: 1.4,
+    letterSpacing: "0.2px",
+  },
+
+  connectionPill: {
+    display: "inline-flex",
+    alignItems: "center",
+    borderRadius: 10,
+    padding: "2px 8px",
+    fontSize: 10.5,
+    fontFamily: '"DM Sans", system-ui, sans-serif',
+    fontWeight: 600,
+    lineHeight: 1.4,
+    letterSpacing: "0.2px",
+    color: "#1DAB57",
+    backgroundColor: "rgba(37,211,102,0.10)",
+  },
+
+  acceptButton: {
+    position: "absolute",
+    left: "50%",
+    transform: "translateX(-50%)",
+    borderRadius: 9,
+    backgroundColor: "#25D366",
+    color: "#ffffff",
+    fontFamily: '"DM Sans", system-ui, sans-serif',
+    fontWeight: 600,
+    fontSize: 12,
+    textTransform: "none",
+    height: 30,
+    padding: "0 14px",
+    boxShadow: "none",
+    "&:hover": {
+      backgroundColor: "#1DAB57",
+      boxShadow: "0 2px 8px rgba(37,211,102,0.25)",
+    },
+  },
 }));
 
 const TicketListItem = ({ ticket }) => {
-	const classes = useStyles();
-	const history = useHistory();
-	const [loading, setLoading] = useState(false);
-	const { ticketId } = useParams();
-	const isMounted = useRef(true);
-	const { user } = useContext(AuthContext);
+  const classes = useStyles();
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+  const { ticketId } = useParams();
+  const isMounted = useRef(true);
+  const { user } = useContext(AuthContext);
 
-	useEffect(() => {
-		return () => {
-			isMounted.current = false;
-		};
-	}, []);
+  useEffect(() => {
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
 
-	const handleAcepptTicket = async id => {
-		setLoading(true);
-		try {
-			await api.put(`/tickets/${id}`, {
-				status: "open",
-				userId: user?.id,
-			});
-		} catch (err) {
-			setLoading(false);
-			toastError(err);
-		}
-		if (isMounted.current) {
-			setLoading(false);
-		}
-		history.push(`/tickets/${id}`);
-	};
+  const handleAcepptTicket = async (id) => {
+    setLoading(true);
+    try {
+      await api.put(`/tickets/${id}`, {
+        status: "open",
+        userId: user?.id,
+      });
+    } catch (err) {
+      setLoading(false);
+      toastError(err);
+    }
+    if (isMounted.current) {
+      setLoading(false);
+    }
+    navigate(`/tickets/${id}`);
+  };
 
-	const handleSelectTicket = id => {
-		history.push(`/tickets/${id}`);
-	};
+  const handleSelectTicket = (id) => {
+    navigate(`/tickets/${id}`);
+  };
 
-	return (
-		<React.Fragment key={ticket.id}>
-			<ListItem
-				dense
-				button
-				onClick={e => {
-					if (ticket.status === "pending") return;
-					handleSelectTicket(ticket.id);
-				}}
-				selected={ticketId && +ticketId === ticket.id}
-				className={clsx(classes.ticket, {
-					[classes.pendingTicket]: ticket.status === "pending",
-				})}
-			>
-				<Tooltip
-					arrow
-					placement="right"
-					title={ticket.queue?.name || "Sem fila"}
-				>
-					<span
-						style={{ backgroundColor: ticket.queue?.color || "#7C7C7C" }}
-						className={classes.ticketQueueColor}
-					></span>
-				</Tooltip>
-				<ListItemAvatar>
-					<Avatar src={ticket?.contact?.profilePicUrl} />
-				</ListItemAvatar>
-				<ListItemText
-					disableTypography
-					primary={
-						<span className={classes.contactNameWrapper}>
-							<Typography
-								noWrap
-								component="span"
-								variant="body2"
-								color="textPrimary"
-							>
-								{ticket.contact.name}
-							</Typography>
-							{ticket.status === "closed" && (
-								<Badge
-									className={classes.closedBadge}
-									badgeContent={"closed"}
-									color="primary"
-								/>
-							)}
-							{ticket.lastMessage && (
-								<Typography
-									className={classes.lastMessageTime}
-									component="span"
-									variant="body2"
-									color="textSecondary"
-								>
-									{isSameDay(parseISO(ticket.updatedAt), new Date()) ? (
-										<>{format(parseISO(ticket.updatedAt), "HH:mm")}</>
-									) : (
-										<>{format(parseISO(ticket.updatedAt), "dd/MM/yyyy")}</>
-									)}
-								</Typography>
-							)}
-							{ticket.whatsappId && (
-								<div className={classes.userTag} title={i18n.t("ticketsList.connectionTitle")}>{ticket.whatsapp?.name}</div>
-							)}
-						</span>
-					}
-					secondary={
-						<span className={classes.contactNameWrapper}>
-							<Typography
-								className={classes.contactLastMessage}
-								noWrap
-								component="span"
-								variant="body2"
-								color="textSecondary"
-							>
-								{ticket.lastMessage ? (
-									<MarkdownWrapper>{ticket.lastMessage}</MarkdownWrapper>
-								) : (
-									<br />
-								)}
-							</Typography>
+  const contactName = ticket.contact?.name || "";
+  const queueColor = ticket.queue?.color || "#78716C";
+  const hasPhoto = !!ticket.contact?.profilePicUrl;
+  const hasUnread = ticket.unreadMessages > 0;
 
-							<Badge
-								className={classes.newMessagesCount}
-								badgeContent={ticket.unreadMessages}
-								classes={{
-									badge: classes.badgeStyle,
-								}}
-							/>
-						</span>
-					}
-				/>
-				{ticket.status === "pending" && (
-					<ButtonWithSpinner
-						color="primary"
-						variant="contained"
-						className={classes.acceptButton}
-						size="small"
-						loading={loading}
-						onClick={e => handleAcepptTicket(ticket.id)}
-					>
-						{i18n.t("ticketsList.buttons.accept")}
-					</ButtonWithSpinner>
-				)}
-			</ListItem>
-			<Divider variant="inset" component="li" />
-		</React.Fragment>
-	);
+  const timeLabel = ticket.lastMessage
+    ? isSameDay(parseISO(ticket.updatedAt), new Date())
+      ? format(parseISO(ticket.updatedAt), "HH:mm")
+      : format(parseISO(ticket.updatedAt), "dd/MM/yy")
+    : null;
+
+  return (
+    <ListItem
+      dense
+      button
+      onClick={() => {
+        if (ticket.status === "pending") return;
+        handleSelectTicket(ticket.id);
+      }}
+      selected={ticketId && +ticketId === ticket.id}
+      className={clsx(classes.ticket, {
+        [classes.pendingTicket]: ticket.status === "pending",
+      })}
+      disableGutters
+    >
+      {/* Queue color bar — only when not selected (selected has its own green bar) */}
+      {!(ticketId && +ticketId === ticket.id) && (
+        <Tooltip arrow placement="right" title={ticket.queue?.name || "Sem fila"}>
+          <span
+            className={classes.queueBar}
+            style={{ backgroundColor: queueColor }}
+          />
+        </Tooltip>
+      )}
+
+      {/* Avatar */}
+      <ListItemAvatar className={classes.avatarWrapper}>
+        <>
+          <Avatar
+            src={hasPhoto ? ticket.contact.profilePicUrl : undefined}
+            className={classes.avatar}
+            style={
+              !hasPhoto
+                ? {
+                    backgroundColor: getAvatarColor(contactName),
+                    color: "#1C1917",
+                  }
+                : {}
+            }
+          >
+            {!hasPhoto && getInitials(contactName)}
+          </Avatar>
+          {ticket.unreadMessages > 0 && (
+            <span className={classes.unreadBadge}>{ticket.unreadMessages}</span>
+          )}
+        </>
+      </ListItemAvatar>
+
+      {/* Content */}
+      <ListItemText
+        disableTypography
+        primary={
+          <div className={classes.content}>
+            {/* Row 1: name + time + unread count */}
+            <div className={classes.row1}>
+              <span className={clsx(classes.contactName, { [classes.contactNameUnread]: hasUnread })}>
+                {contactName}
+              </span>
+              <span style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
+                {timeLabel && (
+                  <span className={clsx(classes.timeLabel, { [classes.timeLabelUnread]: hasUnread })}>
+                    {timeLabel}
+                  </span>
+                )}
+                {hasUnread && (
+                  <span className={classes.unreadCount}>
+                    {ticket.unreadMessages > 99 ? "99+" : ticket.unreadMessages}
+                  </span>
+                )}
+              </span>
+            </div>
+
+            {/* Row 2: last message */}
+            <Typography
+              className={clsx(classes.lastMessage, { [classes.lastMessageUnread]: hasUnread })}
+              component="span"
+            >
+              {ticket.lastMessage ? (
+                <MarkdownWrapper>{ticket.lastMessage}</MarkdownWrapper>
+              ) : (
+                <span style={{ opacity: 0.4 }}>—</span>
+              )}
+            </Typography>
+
+            {/* Row 3: queue + connection pills */}
+            {(ticket.queue?.name || ticket.whatsapp?.name) && (
+              <div className={classes.row3}>
+                {ticket.queue?.name && (
+                  <span
+                    className={classes.queuePill}
+                    style={{
+                      color: queueColor,
+                      backgroundColor: hexToRgba(queueColor, 0.12),
+                    }}
+                  >
+                    {ticket.queue.name}
+                  </span>
+                )}
+                {ticket.whatsappId && ticket.whatsapp?.name && (
+                  <Tooltip title={i18n.t("ticketsList.connectionTitle")} arrow>
+                    <span className={classes.connectionPill}>
+                      {ticket.whatsapp.name}
+                    </span>
+                  </Tooltip>
+                )}
+              </div>
+            )}
+          </div>
+        }
+      />
+
+      {ticket.status === "pending" && (
+        <ButtonWithSpinner
+          variant="contained"
+          className={classes.acceptButton}
+          size="small"
+          loading={loading}
+          onClick={() => handleAcepptTicket(ticket.id)}
+        >
+          {i18n.t("ticketsList.buttons.accept")}
+        </ButtonWithSpinner>
+      )}
+    </ListItem>
+  );
 };
 
 export default TicketListItem;

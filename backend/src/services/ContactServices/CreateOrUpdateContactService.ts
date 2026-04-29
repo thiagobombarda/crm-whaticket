@@ -2,6 +2,7 @@ import { getIO } from "../../libs/socket";
 import Contact from "../../models/Contact";
 import Ticket from "../../models/Ticket";
 import { logger } from "../../utils/logger";
+import { withRedisLock } from "../../helpers/withRedisLock";
 
 interface ExtraInfo {
   name: string;
@@ -21,21 +22,18 @@ interface Request {
 const emitContact = (action: "update" | "create", contact: Contact) => {
   const io = getIO();
 
-  io.emit("contact", { action, contact });
+  io.to("notification").emit("contact", { action, contact });
 };
 
-const CreateOrUpdateContactService = async ({
+const doCreateOrUpdate = async ({
   name,
-  number: rawNumber,
+  number,
   lid,
   profilePicUrl,
   isGroup,
-  email = "",
-  extraInfo = []
-}: Request): Promise<Contact> => {
-  const number = isGroup ? rawNumber : rawNumber.replace(/[^0-9]/g, "");
-  if (!number && !lid) throw new Error("Either number or lid must be provided");
-
+  email,
+  extraInfo
+}: Request & { number: string }): Promise<Contact> => {
   const [contactByNumber, contactByLid] = await Promise.all([
     number ? Contact.findOne({ where: { number } }) : null,
     lid ? Contact.findOne({ where: { lid } }) : null
@@ -97,10 +95,34 @@ const CreateOrUpdateContactService = async ({
     email,
     isGroup,
     extraInfo
-  });
+  } as any);
 
   emitContact("create", created);
   return created;
+};
+
+const CreateOrUpdateContactService = async ({
+  name,
+  number: rawNumber,
+  lid,
+  profilePicUrl,
+  isGroup,
+  email = "",
+  extraInfo = []
+}: Request): Promise<Contact> => {
+  // Instagram numbers are prefixed with "ig_" — skip phone number sanitization for them
+  const number =
+    isGroup || rawNumber.startsWith("ig_")
+      ? rawNumber
+      : rawNumber.replace(/[^0-9]/g, "");
+  if (!number && !lid) throw new Error("Either number or lid must be provided");
+
+  // Lock by number (or lid as fallback) to prevent duplicate contact creation
+  // when two messages from the same new contact arrive simultaneously.
+  const lockKey = `contact:lock:${number || lid}`;
+  return withRedisLock(lockKey, () =>
+    doCreateOrUpdate({ name, number, lid, profilePicUrl, isGroup, email, extraInfo })
+  );
 };
 
 export default CreateOrUpdateContactService;

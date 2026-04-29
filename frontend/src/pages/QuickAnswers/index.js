@@ -14,8 +14,7 @@ import {
   InputAdornment,
   TextField,
 } from "@material-ui/core";
-import { Edit, DeleteOutline } from "@material-ui/icons";
-import SearchIcon from "@material-ui/icons/Search";
+import { Pencil as Edit, Trash2 as DeleteOutline, Search as SearchIcon } from "lucide-react";
 
 import MainContainer from "../../components/MainContainer";
 import MainHeader from "../../components/MainHeader";
@@ -217,7 +216,7 @@ const QuickAnswers = () => {
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <SearchIcon style={{ color: "gray" }} />
+                  <SearchIcon size={18} style={{ color: "gray" }} />
                 </InputAdornment>
               ),
             }}
@@ -261,7 +260,7 @@ const QuickAnswers = () => {
                       size="small"
                       onClick={() => handleEditQuickAnswers(quickAnswer)}
                     >
-                      <Edit />
+                      <Edit size={18} />
                     </IconButton>
 
                     <IconButton
@@ -271,7 +270,7 @@ const QuickAnswers = () => {
                         setDeletingQuickAnswers(quickAnswer);
                       }}
                     >
-                      <DeleteOutline />
+                      <DeleteOutline size={18} />
                     </IconButton>
                   </TableCell>
                 </TableRow>

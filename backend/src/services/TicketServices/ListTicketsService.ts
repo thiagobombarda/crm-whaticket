@@ -7,6 +7,7 @@ import Message from "../../models/Message";
 import Queue from "../../models/Queue";
 import ShowUserService from "../UserServices/ShowUserService";
 import Whatsapp from "../../models/Whatsapp";
+import { getRedisClient } from "../../libs/redisStore";
 
 interface Request {
   searchParam?: string;
@@ -15,6 +16,7 @@ interface Request {
   date?: string;
   showAll?: string;
   userId: string;
+  userProfile?: string;
   withUnreadMessages?: string;
   queueIds: number[];
 }
@@ -25,6 +27,37 @@ interface Response {
   hasMore: boolean;
 }
 
+const CACHE_TTL_SECONDS = 8;
+
+const buildCacheKey = (
+  userId: string,
+  status: string | undefined,
+  showAll: string | undefined,
+  queueIds: number[],
+  pageNumber: string,
+  date: string | undefined,
+  withUnreadMessages: string | undefined
+): string =>
+  `tickets:list:${userId}:${status}:${showAll}:${queueIds.sort().join(",")}:${pageNumber}:${date}:${withUnreadMessages}`;
+
+export const invalidateTicketListCache = async (
+  userId?: string | number
+): Promise<void> => {
+  const redis = getRedisClient();
+  if (!redis) return;
+
+  // Use SCAN to find and delete matching keys without blocking
+  const pattern = userId ? `tickets:list:${userId}:*` : "tickets:list:*";
+  let cursor = "0";
+  do {
+    const [next, keys] = await redis.scan(cursor, "MATCH", pattern, "COUNT", 100);
+    cursor = next;
+    if (keys.length > 0) {
+      await redis.del(...keys);
+    }
+  } while (cursor !== "0");
+};
+
 const ListTicketsService = async ({
   searchParam = "",
   pageNumber = "1",
@@ -33,6 +66,7 @@ const ListTicketsService = async ({
   date,
   showAll,
   userId,
+  userProfile,
   withUnreadMessages
 }: Request): Promise<Response> => {
   let whereCondition: Filterable["where"] = {
@@ -59,7 +93,7 @@ const ListTicketsService = async ({
     }
   ];
 
-  if (showAll === "true") {
+  if (showAll === "true" && userProfile === "admin") {
     whereCondition = { queueId: { [Op.or]: [queueIds, null] } };
   }
 
@@ -80,11 +114,19 @@ const ListTicketsService = async ({
         as: "messages",
         attributes: ["id", "body"],
         where: {
-          body: where(
-            fn("LOWER", col("body")),
-            "LIKE",
-            `%${sanitizedSearchParam}%`
-          )
+          // Use full-text search when available (falls back gracefully when
+          // the search_vector column does not yet exist — e.g. before migration)
+          [Op.or]: [
+            where(
+              fn(
+                "to_tsvector",
+                "portuguese",
+                fn("coalesce", col("messages.body"), "")
+              ),
+              "@@",
+              fn("plainto_tsquery", "portuguese", sanitizedSearchParam)
+            ) as any
+          ]
         },
         required: false,
         duplicating: false
@@ -102,12 +144,13 @@ const ListTicketsService = async ({
           )
         },
         { "$contact.number$": { [Op.like]: `%${sanitizedSearchParam}%` } },
+        // FTS on message body using the pre-computed search_vector index
         {
-          "$message.body$": where(
-            fn("LOWER", col("body")),
-            "LIKE",
-            `%${sanitizedSearchParam}%`
-          )
+          "$messages.search_vector$": where(
+            col("messages.search_vector"),
+            "@@",
+            fn("plainto_tsquery", "portuguese", sanitizedSearchParam)
+          ) as any
         }
       ]
     };
@@ -115,6 +158,7 @@ const ListTicketsService = async ({
 
   if (date) {
     whereCondition = {
+      ...whereCondition,
       createdAt: {
         [Op.between]: [+startOfDay(parseISO(date)), +endOfDay(parseISO(date))]
       }
@@ -135,6 +179,20 @@ const ListTicketsService = async ({
   const limit = 40;
   const offset = limit * (+pageNumber - 1);
 
+  // Only cache standard list views — search queries are too dynamic to cache
+  const isSearchQuery = !!searchParam;
+  const redis = isSearchQuery ? null : getRedisClient();
+  const cacheKey = redis
+    ? buildCacheKey(userId, status, showAll, queueIds, pageNumber, date, withUnreadMessages)
+    : null;
+
+  if (redis && cacheKey) {
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      return JSON.parse(cached);
+    }
+  }
+
   const { count, rows: tickets } = await Ticket.findAndCountAll({
     where: whereCondition,
     include: includeCondition,
@@ -145,12 +203,15 @@ const ListTicketsService = async ({
   });
 
   const hasMore = count > offset + tickets.length;
+  const result = { tickets, count, hasMore };
 
-  return {
-    tickets,
-    count,
-    hasMore
-  };
+  if (redis && cacheKey) {
+    await redis.setex(cacheKey, CACHE_TTL_SECONDS, JSON.stringify(result)).catch(() => {
+      // Cache write failure is non-fatal
+    });
+  }
+
+  return result;
 };
 
 export default ListTicketsService;

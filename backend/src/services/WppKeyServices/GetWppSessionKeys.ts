@@ -1,4 +1,4 @@
-import { BufferJSON } from "whaileys";
+import { BufferJSON } from "@whiskeysockets/baileys";
 
 import WppKey from "../../models/WppKey";
 import { getFromRedis } from "../../libs/redisStore";

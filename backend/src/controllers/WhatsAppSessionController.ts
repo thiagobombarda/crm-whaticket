@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { whatsappProvider } from "../providers/WhatsApp";
+import { getProvider } from "../providers/WhatsApp";
 import ShowWhatsAppService from "../services/WhatsappService/ShowWhatsAppService";
 import { StartWhatsAppSession } from "../services/WbotServices/StartWhatsAppSession";
 import UpdateWhatsAppService from "../services/WhatsappService/UpdateWhatsAppService";
@@ -30,7 +30,7 @@ const remove = async (req: Request, res: Response): Promise<Response> => {
   const { whatsappId } = req.params;
   const whatsapp = await ShowWhatsAppService(whatsappId);
 
-  await whatsappProvider.logout(whatsapp.id);
+  await getProvider(whatsapp.channel || "whatsapp").logout(whatsapp.id);
 
   return res.status(200).json({ message: "Session disconnected." });
 };

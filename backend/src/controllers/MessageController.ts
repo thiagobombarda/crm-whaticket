@@ -4,7 +4,9 @@ import SetTicketMessagesAsRead from "../helpers/SetTicketMessagesAsRead";
 import { getIO } from "../libs/socket";
 import Message from "../models/Message";
 
+import CreateMessageService from "../services/MessageServices/CreateMessageService";
 import ListMessagesService from "../services/MessageServices/ListMessagesService";
+import SummarizeMessagesService from "../services/MessageServices/SummarizeMessagesService";
 import ShowTicketService from "../services/TicketServices/ShowTicketService";
 import DeleteWhatsAppMessage from "../services/WbotServices/DeleteWhatsAppMessage";
 import SendWhatsAppMedia from "../services/WbotServices/SendWhatsAppMedia";
@@ -45,16 +47,44 @@ export const store = async (req: Request, res: Response): Promise<Response> => {
   SetTicketMessagesAsRead(ticket);
 
   if (medias) {
-    await Promise.all(
-      medias.map(async (media: Express.Multer.File) => {
-        await SendWhatsAppMedia({ media, ticket });
-      })
-    );
+    // Sequential sends — prevents anti-spam triggers and respects rate limiting
+    for (const media of medias) {
+      const sentMedia = await SendWhatsAppMedia({ media, ticket });
+      await CreateMessageService({
+        messageData: {
+          id: sentMedia.id,
+          ticketId: ticket.id,
+          body: sentMedia.body || media.originalname,
+          fromMe: true,
+          read: true,
+          mediaType: sentMedia.type || "image",
+          ack: sentMedia.ack || 1
+        }
+      });
+    }
   } else {
-    await SendWhatsAppMessage({ body, ticket, quotedMsg });
+    const sentMessage = await SendWhatsAppMessage({ body, ticket, quotedMsg });
+    await CreateMessageService({
+      messageData: {
+        id: sentMessage.id,
+        ticketId: ticket.id,
+        body,
+        fromMe: true,
+        read: true,
+        mediaType: "chat",
+        quotedMsgId: quotedMsg?.id,
+        ack: sentMessage.ack || 1
+      }
+    });
   }
 
   return res.send();
+};
+
+export const summary = async (req: Request, res: Response): Promise<Response> => {
+  const { ticketId } = req.params;
+  const text = await SummarizeMessagesService(ticketId);
+  return res.json({ summary: text });
 };
 
 export const remove = async (

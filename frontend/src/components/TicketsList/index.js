@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useReducer, useContext } from "react";
+import React, { useState, useEffect, useReducer, useContext, useRef } from "react";
 import openSocket from "../../services/socket-io";
 
 import { makeStyles } from "@material-ui/core/styles";
@@ -27,14 +27,14 @@ const useStyles = makeStyles(theme => ({
 		flex: 1,
 		overflowY: "scroll",
 		...theme.scrollbarStyles,
-		borderTop: "2px solid rgba(0, 0, 0, 0.12)",
+		borderTop: "1px solid #E5E9EF",
 	},
 
 	ticketsListHeader: {
-		color: "rgb(67, 83, 105)",
+		color: "#0A0F1E",
 		zIndex: 2,
-		backgroundColor: "white",
-		borderBottom: "1px solid rgba(0, 0, 0, 0.12)",
+		backgroundColor: "#ffffff",
+		borderBottom: "1px solid #E5E9EF",
 		display: "flex",
 		alignItems: "center",
 		justifyContent: "space-between",
@@ -42,23 +42,27 @@ const useStyles = makeStyles(theme => ({
 
 	ticketsCount: {
 		fontWeight: "normal",
-		color: "rgb(104, 121, 146)",
+		color: "#9BA3B0",
 		marginLeft: "8px",
 		fontSize: "14px",
+		fontFamily: '"DM Sans", system-ui, sans-serif',
 	},
 
 	noTicketsText: {
 		textAlign: "center",
-		color: "rgb(104, 121, 146)",
-		fontSize: "14px",
-		lineHeight: "1.4",
+		color: "#9BA3B0",
+		fontSize: "13.5px",
+		lineHeight: "1.5",
+		fontFamily: '"DM Sans", system-ui, sans-serif',
 	},
 
 	noTicketsTitle: {
 		textAlign: "center",
-		fontSize: "16px",
+		fontSize: "15px",
 		fontWeight: "600",
-		margin: "0px",
+		margin: "0px 0px 4px",
+		color: "#0A0F1E",
+		fontFamily: '"DM Sans", system-ui, sans-serif',
 	},
 
 	noTicketsDiv: {
@@ -181,6 +185,23 @@ const reducer = (state, action) => {
 		});
 	}, [tickets]);
 
+	// Batching: collect socket events for 150ms then dispatch once
+	const pendingActions = useRef([]);
+	const batchTimeout = useRef(null);
+
+	const flushBatch = () => {
+		const actions = pendingActions.current.splice(0);
+		actions.forEach(action => dispatch(action));
+		batchTimeout.current = null;
+	};
+
+	const scheduleBatch = (action) => {
+		pendingActions.current.push(action);
+		if (!batchTimeout.current) {
+			batchTimeout.current = setTimeout(flushBatch, 150);
+		}
+	};
+
 	useEffect(() => {
 		const socket = openSocket();
 
@@ -191,6 +212,13 @@ const reducer = (state, action) => {
 		const notBelongsToUserQueues = ticket =>
 			ticket.queueId && selectedQueueIds.indexOf(ticket.queueId) === -1;
 
+		if (socket.connected) {
+			if (status) {
+				socket.emit("joinTickets", status);
+			} else {
+				socket.emit("joinNotification");
+			}
+		}
 		socket.on("connect", () => {
 			if (status) {
 				socket.emit("joinTickets", status);
@@ -201,31 +229,30 @@ const reducer = (state, action) => {
 
 		socket.on("ticket", data => {
 			if (data.action === "updateUnread") {
-				dispatch({
-					type: "RESET_UNREAD",
-					payload: data.ticketId,
-				});
+				scheduleBatch({ type: "RESET_UNREAD", payload: data.ticketId });
 			}
 
 			if (data.action === "update" && shouldUpdateTicket(data.ticket)) {
-				dispatch({
-					type: "UPDATE_TICKET",
-					payload: data.ticket,
-				});
+				if (status && data.ticket.status !== status) {
+					scheduleBatch({ type: "DELETE_TICKET", payload: data.ticket.id });
+				} else {
+					scheduleBatch({ type: "UPDATE_TICKET", payload: data.ticket });
+				}
 			}
 
 			if (data.action === "update" && notBelongsToUserQueues(data.ticket)) {
-				dispatch({ type: "DELETE_TICKET", payload: data.ticket.id });
+				scheduleBatch({ type: "DELETE_TICKET", payload: data.ticket.id });
 			}
 
 			if (data.action === "delete") {
-				dispatch({ type: "DELETE_TICKET", payload: data.ticketId });
+				scheduleBatch({ type: "DELETE_TICKET", payload: data.ticketId });
 			}
 		});
 
 		socket.on("appMessage", data => {
 			if (data.action === "create" && shouldUpdateTicket(data.ticket)) {
-				dispatch({
+				if (status && data.ticket.status !== status) return;
+				scheduleBatch({
 					type: "UPDATE_TICKET_UNREAD_MESSAGES",
 					payload: data.ticket,
 				});
@@ -234,7 +261,7 @@ const reducer = (state, action) => {
 
 		socket.on("contact", data => {
 			if (data.action === "update") {
-				dispatch({
+				scheduleBatch({
 					type: "UPDATE_TICKET_CONTACT",
 					payload: data.contact,
 				});
@@ -242,6 +269,7 @@ const reducer = (state, action) => {
 		});
 
 		return () => {
+			if (batchTimeout.current) clearTimeout(batchTimeout.current);
 			socket.disconnect();
 		};
 	}, [status, searchParam, showAll, user, selectedQueueIds]);

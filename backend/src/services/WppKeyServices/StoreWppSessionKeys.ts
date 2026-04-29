@@ -1,4 +1,4 @@
-import { BufferJSON } from "whaileys";
+import { BufferJSON } from "@whiskeysockets/baileys";
 
 import WppKey from "../../models/WppKey";
 import { setInRedis } from "../../libs/redisStore";
@@ -31,12 +31,10 @@ const StoreWppSessionKeys = async ({
   }
 
   try {
-    await WppKey.upsert({
-      connectionId,
-      type,
-      keyId: id,
-      value: valueJson
-    });
+    await WppKey.upsert(
+      { connectionId, type, keyId: id, value: valueJson } as any,
+      { conflictFields: ["connectionId", "type", "keyId"] as any }
+    );
   } catch (err) {
     logger.error({
       info: "Error storing key in database",

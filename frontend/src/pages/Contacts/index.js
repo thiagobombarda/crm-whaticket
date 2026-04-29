@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useReducer, useContext } from "react";
 import openSocket from "../../services/socket-io";
 import { toast } from "react-toastify";
-import { useHistory } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 import { makeStyles } from "@material-ui/core/styles";
 import Table from "@material-ui/core/Table";
@@ -12,14 +12,11 @@ import TableRow from "@material-ui/core/TableRow";
 import Paper from "@material-ui/core/Paper";
 import Button from "@material-ui/core/Button";
 import Avatar from "@material-ui/core/Avatar";
-import WhatsAppIcon from "@material-ui/icons/WhatsApp";
-import SearchIcon from "@material-ui/icons/Search";
 import TextField from "@material-ui/core/TextField";
 import InputAdornment from "@material-ui/core/InputAdornment";
-
 import IconButton from "@material-ui/core/IconButton";
-import DeleteOutlineIcon from "@material-ui/icons/DeleteOutline";
-import EditIcon from "@material-ui/icons/Edit";
+
+import { Search as SearchIcon, Trash2 as DeleteOutlineIcon, Pencil as EditIcon, MessageSquareText as WhatsAppIcon, UserPlus as PersonAddOutlinedIcon, Phone as ContactPhoneOutlinedIcon, Download as GetAppOutlinedIcon } from "lucide-react";
 
 import api from "../../services/api";
 import TableRowSkeleton from "../../components/TableRowSkeleton";
@@ -27,10 +24,6 @@ import ContactModal from "../../components/ContactModal";
 import ConfirmationModal from "../../components/ConfirmationModal/";
 
 import { i18n } from "../../translate/i18n";
-import MainHeader from "../../components/MainHeader";
-import Title from "../../components/Title";
-import MainHeaderButtonsWrapper from "../../components/MainHeaderButtonsWrapper";
-import MainContainer from "../../components/MainContainer";
 import toastError from "../../errors/toastError";
 import { AuthContext } from "../../context/Auth/AuthContext";
 import { Can } from "../../components/Can";
@@ -39,7 +32,6 @@ const reducer = (state, action) => {
   if (action.type === "LOAD_CONTACTS") {
     const contacts = action.payload;
     const newContacts = [];
-
     contacts.forEach((contact) => {
       const contactIndex = state.findIndex((c) => c.id === contact.id);
       if (contactIndex !== -1) {
@@ -48,14 +40,12 @@ const reducer = (state, action) => {
         newContacts.push(contact);
       }
     });
-
     return [...state, ...newContacts];
   }
 
   if (action.type === "UPDATE_CONTACTS") {
     const contact = action.payload;
     const contactIndex = state.findIndex((c) => c.id === contact.id);
-
     if (contactIndex !== -1) {
       state[contactIndex] = contact;
       return [...state];
@@ -66,7 +56,6 @@ const reducer = (state, action) => {
 
   if (action.type === "DELETE_CONTACT") {
     const contactId = action.payload;
-
     const contactIndex = state.findIndex((c) => c.id === contactId);
     if (contactIndex !== -1) {
       state.splice(contactIndex, 1);
@@ -79,19 +68,260 @@ const reducer = (state, action) => {
   }
 };
 
-const useStyles = makeStyles((theme) => ({
-  mainPaper: {
+const getInitials = (name = "") => {
+  const parts = name.trim().split(" ");
+  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+};
+
+const getAvatarColor = (name = "") => {
+  const colors = [
+    { bg: "#EEF9F3", text: "#1DAB57" },
+    { bg: "#EEF2FF", text: "#4F46E5" },
+    { bg: "#FFF7ED", text: "#EA580C" },
+    { bg: "#FDF2F8", text: "#DB2777" },
+    { bg: "#F0F9FF", text: "#0284C7" },
+  ];
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash += name.charCodeAt(i);
+  return colors[hash % colors.length];
+};
+
+const useStyles = makeStyles(() => ({
+  root: {
+    padding: "28px 24px",
+    backgroundColor: "#F7F8FA",
+    minHeight: "100%",
+    display: "flex",
+    flexDirection: "column",
+  },
+
+  pageHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 24,
+    flexWrap: "wrap",
+    gap: 16,
+  },
+
+  titleArea: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+  },
+
+  titleIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 11,
+    background: "linear-gradient(135deg, #25D366, #1DAB57)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    "& svg": {
+      fontSize: 20,
+      color: "#ffffff",
+    },
+  },
+
+  titleText: {
+    fontFamily: '"Fraunces", Georgia, serif',
+    fontWeight: 700,
+    fontSize: 22,
+    color: "#0A0F1E",
+    letterSpacing: "-0.4px",
+    margin: 0,
+  },
+
+  actionsArea: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    flexWrap: "wrap",
+  },
+
+  searchField: {
+    "& .MuiOutlinedInput-root": {
+      borderRadius: 11,
+      backgroundColor: "#ffffff",
+      fontFamily: '"DM Sans", system-ui, sans-serif',
+      fontSize: 14,
+      height: 40,
+      "& fieldset": {
+        borderColor: "#E5E9EF",
+      },
+      "&:hover fieldset": {
+        borderColor: "#25D366",
+      },
+      "&.Mui-focused fieldset": {
+        borderColor: "#25D366",
+      },
+    },
+    "& input": {
+      padding: "0 14px",
+      height: 40,
+      boxSizing: "border-box",
+      fontFamily: '"DM Sans", system-ui, sans-serif',
+      fontSize: 14,
+      color: "#0A0F1E",
+    },
+  },
+
+  importBtn: {
+    height: 40,
+    borderRadius: 11,
+    border: "1px solid #E5E9EF",
+    backgroundColor: "#ffffff",
+    color: "#9BA3B0",
+    fontFamily: '"DM Sans", system-ui, sans-serif',
+    fontWeight: 600,
+    fontSize: 13,
+    textTransform: "none",
+    boxShadow: "none",
+    "&:hover": {
+      backgroundColor: "#F7F8FA",
+      boxShadow: "none",
+    },
+  },
+
+  addBtn: {
+    height: 40,
+    borderRadius: 11,
+    background: "linear-gradient(135deg, #25D366, #1DAB57)",
+    color: "#ffffff",
+    fontFamily: '"DM Sans", system-ui, sans-serif',
+    fontWeight: 600,
+    fontSize: 13,
+    textTransform: "none",
+    boxShadow: "none",
+    gap: 6,
+    "&:hover": {
+      background: "linear-gradient(135deg, #1DAB57, #178A45)",
+      boxShadow: "none",
+    },
+  },
+
+  tableCard: {
+    borderRadius: 14,
+    border: "1px solid #E5E9EF",
+    overflow: "hidden",
     flex: 1,
-    padding: theme.spacing(1),
-    overflowY: "scroll",
-    ...theme.scrollbarStyles,
+    display: "flex",
+    flexDirection: "column",
+  },
+
+  tableWrapper: {
+    overflowY: "auto",
+    flex: 1,
+  },
+
+  tableHead: {
+    backgroundColor: "#F7F8FA",
+  },
+
+  th: {
+    fontFamily: '"DM Sans", system-ui, sans-serif',
+    fontWeight: 600,
+    fontSize: 11,
+    color: "#9BA3B0",
+    letterSpacing: "0.6px",
+    textTransform: "uppercase",
+    padding: "10px 20px",
+    borderBottom: "1px solid #E5E9EF",
+    whiteSpace: "nowrap",
+  },
+
+  row: {
+    borderBottom: "1px solid #F0F2F5",
+    transition: "background 0.15s",
+    "&:last-child": {
+      borderBottom: "none",
+    },
+    "&:hover": {
+      backgroundColor: "rgba(37,211,102,0.04)",
+    },
+  },
+
+  td: {
+    fontFamily: '"DM Sans", system-ui, sans-serif',
+    fontSize: 14,
+    color: "#0A0F1E",
+    padding: "10px 20px",
+    borderBottom: "none",
+    verticalAlign: "middle",
+  },
+
+  contactName: {
+    fontWeight: 600,
+    color: "#0A0F1E",
+  },
+
+  contactNumber: {
+    color: "#9BA3B0",
+    fontSize: 13,
+  },
+
+  avatar: {
+    width: 34,
+    height: 34,
+    fontSize: 12,
+    fontWeight: 700,
+    fontFamily: '"DM Sans", system-ui, sans-serif',
+  },
+
+  nameCell: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+  },
+
+  whatsappBtn: {
+    color: "#9BA3B0",
+    "&:hover": {
+      color: "#25D366",
+      backgroundColor: "rgba(37,211,102,0.08)",
+    },
+  },
+
+  editBtn: {
+    color: "#9BA3B0",
+    "&:hover": {
+      color: "#25D366",
+      backgroundColor: "rgba(37,211,102,0.08)",
+    },
+  },
+
+  deleteBtn: {
+    color: "#9BA3B0",
+    "&:hover": {
+      color: "#DC2626",
+      backgroundColor: "rgba(220,38,38,0.08)",
+    },
+  },
+
+  emptyState: {
+    padding: "60px 20px",
+    textAlign: "center",
+  },
+
+  emptyIcon: {
+    fontSize: 52,
+    color: "#C4CDD5",
+    marginBottom: 12,
+  },
+
+  emptyText: {
+    fontFamily: '"DM Sans", system-ui, sans-serif',
+    fontSize: 14,
+    color: "#9BA3B0",
+    margin: 0,
   },
 }));
 
 const Contacts = () => {
   const classes = useStyles();
-  const history = useHistory();
-
+  const navigate = useNavigate();
   const { user } = useContext(AuthContext);
 
   const [loading, setLoading] = useState(false);
@@ -131,20 +361,16 @@ const Contacts = () => {
 
   useEffect(() => {
     const socket = openSocket();
-
+    socket.emit("joinNotification");
     socket.on("contact", (data) => {
       if (data.action === "update" || data.action === "create") {
         dispatch({ type: "UPDATE_CONTACTS", payload: data.contact });
       }
-
       if (data.action === "delete") {
         dispatch({ type: "DELETE_CONTACT", payload: +data.contactId });
       }
     });
-
-    return () => {
-      socket.disconnect();
-    };
+    return () => { socket.disconnect(); };
   }, []);
 
   const handleSearch = (event) => {
@@ -166,11 +392,11 @@ const Contacts = () => {
     setLoading(true);
     try {
       const { data: ticket } = await api.post("/tickets", {
-        contactId: contactId,
+        contactId,
         userId: user?.id,
         status: "open",
       });
-      history.push(`/tickets/${ticket.id}`);
+      navigate(`/tickets/${ticket.id}`);
     } catch (err) {
       toastError(err);
     }
@@ -197,7 +423,7 @@ const Contacts = () => {
   const handleimportContact = async () => {
     try {
       await api.post("/contacts/import");
-      history.go(0);
+      window.location.reload();
     } catch (err) {
       toastError(err);
     }
@@ -216,24 +442,22 @@ const Contacts = () => {
   };
 
   return (
-    <MainContainer className={classes.mainContainer}>
+    <div className={classes.root}>
       <ContactModal
         open={contactModalOpen}
         onClose={handleCloseContactModal}
         aria-labelledby="form-dialog-title"
         contactId={selectedContactId}
-      ></ContactModal>
+      />
       <ConfirmationModal
         title={
           deletingContact
-            ? `${i18n.t("contacts.confirmationModal.deleteTitle")} ${
-                deletingContact.name
-              }?`
+            ? `${i18n.t("contacts.confirmationModal.deleteTitle")} ${deletingContact.name}?`
             : `${i18n.t("contacts.confirmationModal.importTitlte")}`
         }
         open={confirmOpen}
         onClose={setConfirmOpen}
-        onConfirm={(e) =>
+        onConfirm={() =>
           deletingContact
             ? handleDeleteContact(deletingContact.id)
             : handleimportContact()
@@ -243,106 +467,146 @@ const Contacts = () => {
           ? `${i18n.t("contacts.confirmationModal.deleteMessage")}`
           : `${i18n.t("contacts.confirmationModal.importMessage")}`}
       </ConfirmationModal>
-      <MainHeader>
-        <Title>{i18n.t("contacts.title")}</Title>
-        <MainHeaderButtonsWrapper>
+
+      <div className={classes.pageHeader}>
+        <div className={classes.titleArea}>
+          <div className={classes.titleIcon}>
+            <ContactPhoneOutlinedIcon size={20} />
+          </div>
+          <p className={classes.titleText}>{i18n.t("contacts.title")}</p>
+        </div>
+        <div className={classes.actionsArea}>
           <TextField
             placeholder={i18n.t("contacts.searchPlaceholder")}
             type="search"
             value={searchParam}
             onChange={handleSearch}
+            variant="outlined"
+            size="small"
+            className={classes.searchField}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <SearchIcon style={{ color: "gray" }} />
+                  <SearchIcon size={18} style={{ color: "#9BA3B0" }} />
                 </InputAdornment>
               ),
             }}
           />
           <Button
             variant="contained"
-            color="primary"
-            onClick={(e) => setConfirmOpen(true)}
+            className={classes.importBtn}
+            startIcon={<GetAppOutlinedIcon size={16} />}
+            onClick={() => {
+              setDeletingContact(null);
+              setConfirmOpen(true);
+            }}
           >
             {i18n.t("contacts.buttons.import")}
           </Button>
           <Button
             variant="contained"
-            color="primary"
+            className={classes.addBtn}
+            startIcon={<PersonAddOutlinedIcon size={16} />}
             onClick={handleOpenContactModal}
           >
             {i18n.t("contacts.buttons.add")}
           </Button>
-        </MainHeaderButtonsWrapper>
-      </MainHeader>
-      <Paper
-        className={classes.mainPaper}
-        variant="outlined"
-        onScroll={handleScroll}
-      >
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell padding="checkbox" />
-              <TableCell>{i18n.t("contacts.table.name")}</TableCell>
-              <TableCell align="center">
-                {i18n.t("contacts.table.whatsapp")}
-              </TableCell>
-              <TableCell align="center">
-                {i18n.t("contacts.table.email")}
-              </TableCell>
-              <TableCell align="center">
-                {i18n.t("contacts.table.actions")}
-              </TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            <>
-              {contacts.map((contact) => (
-                <TableRow key={contact.id}>
-                  <TableCell style={{ paddingRight: 0 }}>
-                    {<Avatar src={contact.profilePicUrl} />}
-                  </TableCell>
-                  <TableCell>{contact.name}</TableCell>
-                  <TableCell align="center">{contact.number}</TableCell>
-                  <TableCell align="center">{contact.email}</TableCell>
-                  <TableCell align="center">
-                    <IconButton
-                      size="small"
-                      onClick={() => handleSaveTicket(contact.id)}
-                    >
-                      <WhatsAppIcon />
-                    </IconButton>
-                    <IconButton
-                      size="small"
-                      onClick={() => hadleEditContact(contact.id)}
-                    >
-                      <EditIcon />
-                    </IconButton>
-                    <Can
-                      role={user.profile}
-                      perform="contacts-page:deleteContact"
-                      yes={() => (
-                        <IconButton
-                          size="small"
-                          onClick={(e) => {
-                            setConfirmOpen(true);
-                            setDeletingContact(contact);
-                          }}
-                        >
-                          <DeleteOutlineIcon />
-                        </IconButton>
-                      )}
-                    />
+        </div>
+      </div>
+
+      <Paper className={classes.tableCard} elevation={0}>
+        <div className={classes.tableWrapper} onScroll={handleScroll}>
+          <Table size="small" stickyHeader>
+            <TableHead className={classes.tableHead}>
+              <TableRow>
+                <TableCell className={classes.th} style={{ width: 52 }} />
+                <TableCell className={classes.th}>{i18n.t("contacts.table.name")}</TableCell>
+                <TableCell className={classes.th}>{i18n.t("contacts.table.whatsapp")}</TableCell>
+                <TableCell className={classes.th}>{i18n.t("contacts.table.email")}</TableCell>
+                <TableCell className={classes.th} align="right">{i18n.t("contacts.table.actions")}</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {contacts.map((contact) => {
+                const avatarColors = getAvatarColor(contact.name);
+                return (
+                  <TableRow key={contact.id} className={classes.row}>
+                    <TableCell className={classes.td} style={{ paddingRight: 0, width: 52 }}>
+                      <Avatar
+                        src={contact.profilePicUrl}
+                        className={classes.avatar}
+                        style={
+                          contact.profilePicUrl
+                            ? {}
+                            : { backgroundColor: avatarColors.bg, color: avatarColors.text }
+                        }
+                      >
+                        {!contact.profilePicUrl && getInitials(contact.name)}
+                      </Avatar>
+                    </TableCell>
+                    <TableCell className={classes.td}>
+                      <span className={classes.contactName}>{contact.name}</span>
+                    </TableCell>
+                    <TableCell className={classes.td}>
+                      <span className={classes.contactNumber}>{contact.number}</span>
+                    </TableCell>
+                    <TableCell className={classes.td}>
+                      <span style={{ color: "#9BA3B0", fontSize: 13 }}>{contact.email}</span>
+                    </TableCell>
+                    <TableCell className={classes.td} align="right">
+                      <IconButton
+                        size="small"
+                        className={classes.whatsappBtn}
+                        title="Iniciar conversa"
+                        onClick={() => handleSaveTicket(contact.id)}
+                      >
+                        <WhatsAppIcon size={18} />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        className={classes.editBtn}
+                        title="Editar contato"
+                        onClick={() => hadleEditContact(contact.id)}
+                      >
+                        <EditIcon size={18} />
+                      </IconButton>
+                      <Can
+                        role={user.profile}
+                        perform="contacts-page:deleteContact"
+                        yes={() => (
+                          <IconButton
+                            size="small"
+                            className={classes.deleteBtn}
+                            title="Deletar contato"
+                            onClick={() => {
+                              setConfirmOpen(true);
+                              setDeletingContact(contact);
+                            }}
+                          >
+                            <DeleteOutlineIcon size={18} />
+                          </IconButton>
+                        )}
+                      />
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+              {loading && <TableRowSkeleton avatar columns={3} />}
+              {!loading && contacts.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={5} style={{ border: "none" }}>
+                    <div className={classes.emptyState}>
+                      <ContactPhoneOutlinedIcon size={52} className={classes.emptyIcon} />
+                      <p className={classes.emptyText}>Nenhum contato encontrado</p>
+                    </div>
                   </TableCell>
                 </TableRow>
-              ))}
-              {loading && <TableRowSkeleton avatar columns={3} />}
-            </>
-          </TableBody>
-        </Table>
+              )}
+            </TableBody>
+          </Table>
+        </div>
       </Paper>
-    </MainContainer>
+    </div>
   );
 };
 

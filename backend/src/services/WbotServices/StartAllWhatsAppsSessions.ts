@@ -3,9 +3,11 @@ import { StartWhatsAppSession } from "./StartWhatsAppSession";
 
 export const StartAllWhatsAppsSessions = async (): Promise<void> => {
   const whatsapps = await ListWhatsAppsService();
-  if (whatsapps.length > 0) {
-    whatsapps.forEach(whatsapp => {
-      StartWhatsAppSession(whatsapp);
-    });
+  for (const whatsapp of whatsapps) {
+    await StartWhatsAppSession(whatsapp);
+    // Stagger session startups to avoid thundering herd on DB and WhatsApp servers
+    if (whatsapps.length > 1) {
+      await new Promise(r => setTimeout(r, 2000));
+    }
   }
 };

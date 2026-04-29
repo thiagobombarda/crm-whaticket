@@ -273,10 +273,16 @@ const messages = {
       },
       newTicketModal: {
         title: "Criar Ticket",
-        fieldLabel: "Digite para pesquisar o contato",
+        titleSub: "Inicie uma nova conversa",
+        contactSection: "Contato",
+        fieldLabel: "Buscar por nome ou número",
         add: "Adicionar",
+        change: "Alterar",
+        queueSection: "Fila de atendimento",
+        queueLabel: "Selecionar fila",
+        queueNone: "Sem fila",
         buttons: {
-          ok: "Salvar",
+          ok: "Iniciar atendimento",
           cancel: "Cancelar",
         },
       },

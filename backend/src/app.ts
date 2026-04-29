@@ -4,6 +4,7 @@ import "express-async-errors";
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import compression from "compression";
 import * as Sentry from "@sentry/node";
 
 import "./database";
@@ -11,6 +12,7 @@ import uploadConfig from "./config/upload";
 import AppError from "./errors/AppError";
 import routes from "./routes";
 import { logger } from "./utils/logger";
+import InstagramWebhookController from "./controllers/InstagramWebhookController";
 
 Sentry.init({ dsn: process.env.SENTRY_DSN });
 
@@ -23,12 +25,32 @@ app.use(
   })
 );
 app.use(cookieParser());
+app.use(compression());
+
+// Instagram webhook routes must be mounted BEFORE express.json()
+// so signature verification can access the raw request body.
+app.get("/instagram/webhook", InstagramWebhookController.verify);
+app.post(
+  "/instagram/webhook",
+  express.raw({ type: "application/json" }),
+  (req, _res, next) => {
+    // Expose raw buffer for HMAC verification in the controller
+    (req as any).rawBody = req.body;
+    req.body = req.body.length ? JSON.parse(req.body.toString()) : {};
+    next();
+  },
+  InstagramWebhookController.receive
+);
+
 app.use(express.json());
-app.use(Sentry.Handlers.requestHandler());
-app.use("/public", express.static(uploadConfig.directory));
+app.use("/public", express.static(uploadConfig.directory, { dotfiles: "allow" }));
+
+// Health check endpoint for Docker/load balancer probes
+app.get("/health", (_req, res) => res.json({ status: "ok", ts: Date.now() }));
+
 app.use(routes);
 
-app.use(Sentry.Handlers.errorHandler());
+Sentry.setupExpressErrorHandler(app);
 
 app.use(async (err: Error, req: Request, res: Response, _: NextFunction) => {
   if (err instanceof AppError) {

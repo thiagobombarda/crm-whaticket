@@ -11,6 +11,7 @@ interface Request {
   farewellMessage?: string;
   status?: string;
   isDefault?: boolean;
+  channel?: string;
 }
 
 interface Response {
@@ -20,12 +21,17 @@ interface Response {
 
 const CreateWhatsAppService = async ({
   name,
-  status = "OPENING",
+  status,
   queueIds = [],
   greetingMessage,
   farewellMessage,
-  isDefault = false
+  isDefault = false,
+  channel = "whatsapp"
 }: Request): Promise<Response> => {
+  // Instagram waits for user login, so initial status is WAITING_LOGIN
+  if (!status) {
+    status = channel === "instagram" ? "WAITING_LOGIN" : "OPENING";
+  }
   const schema = Yup.object().shape({
     name: Yup.string()
       .required()
@@ -75,8 +81,9 @@ const CreateWhatsAppService = async ({
       status,
       greetingMessage,
       farewellMessage,
-      isDefault
-    },
+      isDefault,
+      channel
+    } as any,
     { include: ["queues"] }
   );
 

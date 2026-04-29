@@ -1,7 +1,11 @@
 import AppError from "../../errors/AppError";
 import Message from "../../models/Message";
 import Ticket from "../../models/Ticket";
-import { whatsappProvider, ProviderMessage } from "../../providers/WhatsApp";
+import Whatsapp from "../../models/Whatsapp";
+import { getProvider, ProviderMessage } from "../../providers/WhatsApp";
+import { logger } from "../../utils/logger";
+import { checkOutboundRateLimit } from "../../helpers/rateLimiter";
+import { buildChatId } from "../../helpers/buildChatId";
 
 import formatBody from "../../helpers/Mustache";
 
@@ -20,10 +24,14 @@ const SendWhatsAppMessage = async ({
     throw new AppError("ERR_TICKET_NO_WHATSAPP");
   }
 
-  const chatId = `${ticket.contact.number}@${ticket.isGroup ? "g" : "c"}.us`;
+  const whatsapp = ticket.whatsapp || await Whatsapp.findByPk(ticket.whatsappId);
+  const channel = whatsapp?.channel || "whatsapp";
+  const chatId = buildChatId(channel, ticket.contact.number, ticket.isGroup);
+
+  await checkOutboundRateLimit(ticket.whatsappId);
 
   try {
-    const sentMessage = await whatsappProvider.sendMessage(
+    const sentMessage = await getProvider(channel).sendMessage(
       ticket.whatsappId,
       chatId,
       formatBody(body, ticket.contact),
@@ -37,6 +45,7 @@ const SendWhatsAppMessage = async ({
     await ticket.update({ lastMessage: body });
     return sentMessage;
   } catch (err) {
+    logger.error({ info: "Error sending WhatsApp message", err, chatId });
     throw new AppError("ERR_SENDING_WAPP_MSG");
   }
 };

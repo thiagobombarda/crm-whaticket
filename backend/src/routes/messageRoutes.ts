@@ -9,6 +9,8 @@ const messageRoutes = Router();
 
 const upload = multer(uploadConfig);
 
+messageRoutes.get("/messages/:ticketId/summary", isAuth, MessageController.summary);
+
 messageRoutes.get("/messages/:ticketId", isAuth, MessageController.index);
 
 messageRoutes.post(

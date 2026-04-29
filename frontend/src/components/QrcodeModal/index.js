@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import QRCode from "qrcode.react";
+import { QRCodeSVG as QRCode } from "qrcode.react";
 import openSocket from "../../services/socket-io";
 import toastError from "../../errors/toastError";
 
@@ -27,6 +27,8 @@ const QrcodeModal = ({ open, onClose, whatsAppId }) => {
 	useEffect(() => {
 		if (!whatsAppId) return;
 		const socket = openSocket();
+
+		socket.emit("joinNotification");
 
 		socket.on("whatsappSession", data => {
 			if (data.action === "update" && data.session.id === whatsAppId) {

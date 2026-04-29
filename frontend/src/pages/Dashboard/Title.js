@@ -1,12 +1,18 @@
 import React from "react";
-import Typography from "@material-ui/core/Typography";
 
-const Title = props => {
-	return (
-		<Typography component="h2" variant="h6" color="primary" gutterBottom>
-			{props.children}
-		</Typography>
-	);
-};
+const Title = ({ children }) => (
+  <p
+    style={{
+      fontFamily: '"DM Sans", system-ui, sans-serif',
+      fontWeight: 600,
+      fontSize: 14,
+      color: "#9BA3B0",
+      letterSpacing: "0.4px",
+      margin: "0 0 12px",
+    }}
+  >
+    {children}
+  </p>
+);
 
 export default Title;

@@ -6,8 +6,8 @@ import {
   SendMessageOptions,
   SendMediaOptions
 } from "./types";
-import { WhatsappWebJsProvider } from "./Implementations/wwebjs";
-import { WhaileysProvider } from "./Implementations/whaileys";
+import { BaileysProvider } from "./Implementations/baileys";
+import { InstagramProvider } from "./Implementations/instagram";
 
 export interface WhatsappProvider {
   init(whatsapp: Whatsapp): Promise<void>;
@@ -42,13 +42,12 @@ export interface WhatsappProvider {
   ): Promise<ProviderMessage[]>;
 }
 
-const provider = process.env.WHATSAPP_PROVIDER || "wwebjs";
+export function getProvider(channel: string): WhatsappProvider {
+  if (channel === "instagram") return InstagramProvider;
+  return BaileysProvider;
+}
 
-const providersMap: Record<string, WhatsappProvider> = {
-  wwebjs: WhatsappWebJsProvider,
-  whaileys: WhaileysProvider
-};
-
-const whatsappProvider = providersMap[provider];
+// Kept for backwards compatibility — always refers to the WhatsApp (Baileys) provider
+const whatsappProvider: WhatsappProvider = BaileysProvider;
 
 export { whatsappProvider };

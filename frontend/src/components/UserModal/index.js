@@ -17,13 +17,13 @@ import {
 	FormControl,
 	TextField,
 	InputAdornment,
-	IconButton
-  } from '@material-ui/core';
+	IconButton,
+	Typography,
+} from "@material-ui/core";
 
-import { Visibility, VisibilityOff } from '@material-ui/icons';
+import { Eye as Visibility, EyeOff as VisibilityOff } from "lucide-react";
 
 import { makeStyles } from "@material-ui/core/styles";
-import { green } from "@material-ui/core/colors";
 
 import { i18n } from "../../translate/i18n";
 
@@ -39,11 +39,46 @@ const useStyles = makeStyles(theme => ({
 		display: "flex",
 		flexWrap: "wrap",
 	},
-	multFieldLine: {
-		display: "flex",
-		"& > *:not(:last-child)": {
-			marginRight: theme.spacing(1),
+
+	dialogTitle: {
+		padding: "24px 24px 16px",
+		borderBottom: "1px solid #E5E9EF",
+		"& h2": {
+			fontFamily: '"Fraunces", Georgia, serif',
+			fontWeight: 700,
+			fontSize: 20,
+			color: "#0A0F1E",
+			letterSpacing: "-0.3px",
 		},
+	},
+
+	dialogContent: {
+		padding: "24px",
+		display: "flex",
+		flexDirection: "column",
+		gap: 16,
+	},
+
+	fieldRow: {
+		display: "flex",
+		gap: theme.spacing(2),
+		"& > *": {
+			flex: 1,
+		},
+	},
+
+	formControl: {
+		flex: 1,
+	},
+
+	selectLabel: {
+		fontFamily: '"DM Sans", system-ui, sans-serif',
+	},
+
+	dialogActions: {
+		padding: "16px 24px",
+		borderTop: "1px solid #E5E9EF",
+		gap: 8,
 	},
 
 	btnWrapper: {
@@ -51,16 +86,41 @@ const useStyles = makeStyles(theme => ({
 	},
 
 	buttonProgress: {
-		color: green[500],
+		color: "#25D366",
 		position: "absolute",
 		top: "50%",
 		left: "50%",
 		marginTop: -12,
 		marginLeft: -12,
 	},
-	formControl: {
-		margin: theme.spacing(1),
-		minWidth: 120,
+
+	cancelBtn: {
+		fontFamily: '"DM Sans", system-ui, sans-serif',
+		fontWeight: 500,
+		color: "#9BA3B0",
+		borderColor: "#E5E9EF",
+		borderRadius: 11,
+		"&:hover": {
+			borderColor: "#9BA3B0",
+			backgroundColor: "#F7F8FA",
+		},
+	},
+
+	saveBtn: {
+		fontFamily: '"DM Sans", system-ui, sans-serif',
+		fontWeight: 600,
+		borderRadius: 11,
+		background: "linear-gradient(135deg, #25D366 0%, #1DAB57 100%)",
+		color: "#ffffff",
+		boxShadow: "none",
+		"&:hover": {
+			background: "linear-gradient(135deg, #1DAB57 0%, #158A3E 100%)",
+			boxShadow: "none",
+		},
+		"&:disabled": {
+			background: "#E5E9EF",
+			color: "#9BA3B0",
+		},
 	},
 }));
 
@@ -80,7 +140,7 @@ const UserModal = ({ open, onClose, userId }) => {
 		name: "",
 		email: "",
 		password: "",
-		profile: "user"
+		profile: "user",
 	};
 
 	const { user: loggedInUser } = useContext(AuthContext);
@@ -89,24 +149,21 @@ const UserModal = ({ open, onClose, userId }) => {
 	const [selectedQueueIds, setSelectedQueueIds] = useState([]);
 	const [showPassword, setShowPassword] = useState(false);
 	const [whatsappId, setWhatsappId] = useState(false);
-	const {loading, whatsApps} = useWhatsApps();
+	const { loading, whatsApps } = useWhatsApps();
 
 	useEffect(() => {
 		const fetchUser = async () => {
 			if (!userId) return;
 			try {
 				const { data } = await api.get(`/users/${userId}`);
-				setUser(prevState => {
-					return { ...prevState, ...data };
-				});
+				setUser(prevState => ({ ...prevState, ...data }));
 				const userQueueIds = data.queues?.map(queue => queue.id);
 				setSelectedQueueIds(userQueueIds);
-				setWhatsappId(data.whatsappId ? data.whatsappId : '');
+				setWhatsappId(data.whatsappId ? data.whatsappId : "");
 			} catch (err) {
 				toastError(err);
 			}
 		};
-
 		fetchUser();
 	}, [userId, open]);
 
@@ -138,11 +195,17 @@ const UserModal = ({ open, onClose, userId }) => {
 				maxWidth="xs"
 				fullWidth
 				scroll="paper"
+				PaperProps={{
+					style: {
+						borderRadius: 14,
+						border: "1px solid #E5E9EF",
+					},
+				}}
 			>
-				<DialogTitle id="form-dialog-title">
+				<DialogTitle className={classes.dialogTitle}>
 					{userId
-						? `${i18n.t("userModal.title.edit")}`
-						: `${i18n.t("userModal.title.add")}`}
+						? i18n.t("userModal.title.edit")
+						: i18n.t("userModal.title.add")}
 				</DialogTitle>
 				<Formik
 					initialValues={user}
@@ -157,8 +220,8 @@ const UserModal = ({ open, onClose, userId }) => {
 				>
 					{({ touched, errors, isSubmitting }) => (
 						<Form>
-							<DialogContent dividers>
-								<div className={classes.multFieldLine}>
+							<DialogContent className={classes.dialogContent}>
+								<div className={classes.fieldRow}>
 									<Field
 										as={TextField}
 										label={i18n.t("userModal.form.name")}
@@ -178,23 +241,27 @@ const UserModal = ({ open, onClose, userId }) => {
 										label={i18n.t("userModal.form.password")}
 										error={touched.password && Boolean(errors.password)}
 										helperText={touched.password && errors.password}
-										type={showPassword ? 'text' : 'password'}
+										type={showPassword ? "text" : "password"}
 										InputProps={{
-										endAdornment: (
-											<InputAdornment position="end">
-											<IconButton
-												aria-label="toggle password visibility"
-												onClick={() => setShowPassword((e) => !e)}
-											>
-												{showPassword ? <VisibilityOff /> : <Visibility />}
-											</IconButton>
-											</InputAdornment>
-										)
+											endAdornment: (
+												<InputAdornment position="end">
+													<IconButton
+														aria-label="toggle password visibility"
+														onClick={() => setShowPassword(e => !e)}
+														edge="end"
+														size="small"
+														style={{ color: "#9BA3B0" }}
+													>
+														{showPassword ? <VisibilityOff size={18} /> : <Visibility size={18} />}
+													</IconButton>
+												</InputAdornment>
+											),
 										}}
 										fullWidth
 									/>
 								</div>
-								<div className={classes.multFieldLine}>
+
+								<div className={classes.fieldRow}>
 									<Field
 										as={TextField}
 										label={i18n.t("userModal.form.email")}
@@ -205,36 +272,34 @@ const UserModal = ({ open, onClose, userId }) => {
 										margin="dense"
 										fullWidth
 									/>
-									<FormControl
-										variant="outlined"
-										className={classes.formControl}
-										margin="dense"
-									>
-										<Can
-											role={loggedInUser.profile}
-											perform="user-modal:editProfile"
-											yes={() => (
-												<>
-													<InputLabel id="profile-selection-input-label">
-														{i18n.t("userModal.form.profile")}
-													</InputLabel>
-
-													<Field
-														as={Select}
-														label={i18n.t("userModal.form.profile")}
-														name="profile"
-														labelId="profile-selection-label"
-														id="profile-selection"
-														required
-													>
-														<MenuItem value="admin">Admin</MenuItem>
-														<MenuItem value="user">User</MenuItem>
-													</Field>
-												</>
-											)}
-										/>
-									</FormControl>
+									<Can
+										role={loggedInUser.profile}
+										perform="user-modal:editProfile"
+										yes={() => (
+											<FormControl
+												variant="outlined"
+												className={classes.formControl}
+												margin="dense"
+											>
+												<InputLabel id="profile-selection-input-label">
+													{i18n.t("userModal.form.profile")}
+												</InputLabel>
+												<Field
+													as={Select}
+													label={i18n.t("userModal.form.profile")}
+													name="profile"
+													labelId="profile-selection-label"
+													id="profile-selection"
+													required
+												>
+													<MenuItem value="admin">Admin</MenuItem>
+													<MenuItem value="user">User</MenuItem>
+												</Field>
+											</FormControl>
+										)}
+									/>
 								</div>
+
 								<Can
 									role={loggedInUser.profile}
 									perform="user-modal:editQueues"
@@ -245,53 +310,64 @@ const UserModal = ({ open, onClose, userId }) => {
 										/>
 									)}
 								/>
+
 								<Can
 									role={loggedInUser.profile}
 									perform="user-modal:editQueues"
-									yes={() => (!loading &&
-										<FormControl variant="outlined" margin="dense" className={classes.maxWidth} fullWidth>
-											<InputLabel>{i18n.t("userModal.form.whatsapp")}</InputLabel>
-											<Field
-												as={Select}
-												value={whatsappId}
-												onChange={(e) => setWhatsappId(e.target.value)}
-												label={i18n.t("userModal.form.whatsapp")}
+									yes={() =>
+										!loading && (
+											<FormControl
+												variant="outlined"
+												margin="dense"
+												fullWidth
 											>
-												<MenuItem value={''}>&nbsp;</MenuItem>
-												{whatsApps.map((whatsapp) => (
-													<MenuItem key={whatsapp.id} value={whatsapp.id}>{whatsapp.name}</MenuItem>
-												))}
-											</Field>
-										</FormControl>
-									)}
+												<InputLabel>{i18n.t("userModal.form.whatsapp")}</InputLabel>
+												<Field
+													as={Select}
+													value={whatsappId}
+													onChange={e => setWhatsappId(e.target.value)}
+													label={i18n.t("userModal.form.whatsapp")}
+												>
+													<MenuItem value="">&nbsp;</MenuItem>
+													{whatsApps.map(whatsapp => (
+														<MenuItem key={whatsapp.id} value={whatsapp.id}>
+															{whatsapp.name}
+														</MenuItem>
+													))}
+												</Field>
+											</FormControl>
+										)
+									}
 								/>
 							</DialogContent>
-							<DialogActions>
+
+							<DialogActions className={classes.dialogActions}>
 								<Button
 									onClick={handleClose}
-									color="secondary"
 									disabled={isSubmitting}
 									variant="outlined"
+									className={classes.cancelBtn}
 								>
 									{i18n.t("userModal.buttons.cancel")}
 								</Button>
-								<Button
-									type="submit"
-									color="primary"
-									disabled={isSubmitting}
-									variant="contained"
-									className={classes.btnWrapper}
-								>
-									{userId
-										? `${i18n.t("userModal.buttons.okEdit")}`
-										: `${i18n.t("userModal.buttons.okAdd")}`}
+								<div className={classes.btnWrapper}>
+									<Button
+										type="submit"
+										disabled={isSubmitting}
+										variant="contained"
+										className={classes.saveBtn}
+									>
+										{userId
+											? i18n.t("userModal.buttons.okEdit")
+											: i18n.t("userModal.buttons.okAdd")}
+									</Button>
 									{isSubmitting && (
 										<CircularProgress
 											size={24}
 											className={classes.buttonProgress}
 										/>
 									)}
-								</Button>
+								</div>
 							</DialogActions>
 						</Form>
 					)}

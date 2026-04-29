@@ -49,8 +49,8 @@ class User extends Model<User> {
   profile: string;
 
   @ForeignKey(() => Whatsapp)
-  @Column
-  whatsappId: number;
+  @Column(DataType.INTEGER)
+  whatsappId: number | null;
 
   @BelongsTo(() => Whatsapp)
   whatsapp: Whatsapp;
@@ -69,11 +69,11 @@ class User extends Model<User> {
 
   @BeforeUpdate
   @BeforeCreate
-  static hashPassword = async (instance: User): Promise<void> => {
+  static async hashPassword(instance: User): Promise<void> {
     if (instance.password) {
       instance.passwordHash = await hash(instance.password, 8);
     }
-  };
+  }
 
   public checkPassword = async (password: string): Promise<boolean> => {
     return compare(password, this.getDataValue("passwordHash"));

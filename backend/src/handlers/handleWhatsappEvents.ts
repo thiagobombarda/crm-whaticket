@@ -12,14 +12,15 @@ import Contact from "../models/Contact";
 import Ticket from "../models/Ticket";
 import Message from "../models/Message";
 
-import CreateMessageService from "../services/MessageServices/CreateMessageService";
+import CreateMessageService, { invalidateTicketCache } from "../services/MessageServices/CreateMessageService";
 import CreateOrUpdateContactService from "../services/ContactServices/CreateOrUpdateContactService";
 import FindOrCreateTicketService from "../services/TicketServices/FindOrCreateTicketService";
 import ShowWhatsAppService from "../services/WhatsappService/ShowWhatsAppService";
 import UpdateTicketService from "../services/TicketServices/UpdateTicketService";
 import CreateContactService from "../services/ContactServices/CreateContactService";
 
-import { whatsappProvider } from "../providers/WhatsApp/whatsappProvider";
+import { getProvider } from "../providers/WhatsApp/whatsappProvider";
+import { buildChatId } from "../helpers/buildChatId";
 import { MessageType, MessageAck } from "../providers/WhatsApp/types";
 
 const writeFileAsync = promisify(writeFile);
@@ -57,6 +58,7 @@ export interface MediaPayload {
 export interface WhatsappContextPayload {
   whatsappId: number;
   unreadMessages: number;
+  channel?: string;
   groupContact?: ContactPayload;
 }
 
@@ -90,9 +92,20 @@ const saveMediaFile = async (mediaPayload: MediaPayload): Promise<string> => {
     const [extension] = mediaPayload.mimetype.split("/")[1].split(";");
     filename = `${randomId}-${new Date().getTime()}.${extension}`;
   } else {
-    const baseName = originalFilename.split(".").slice(0, -1).join(".");
-    const extension = originalFilename.split(".").slice(-1)[0];
-    filename = `${baseName}.${randomId}.${extension}`;
+    const dotIndex = originalFilename.lastIndexOf(".");
+    if (dotIndex > 0) {
+      // Tem extensão: "documento.pdf" → "documento.aBcDe.pdf"
+      const baseName = originalFilename.substring(0, dotIndex);
+      const extension = originalFilename.substring(dotIndex + 1);
+      filename = `${baseName}.${randomId}.${extension}`;
+    } else {
+      // Sem extensão: infere pelo mimetype
+      const parts = mediaPayload.mimetype.split("/");
+      const ext = parts.length > 1 ? parts[1].split(";")[0] : "";
+      filename = ext
+        ? `${originalFilename}.${randomId}.${ext}`
+        : `${originalFilename}.${randomId}`;
+    }
   }
 
   try {
@@ -148,9 +161,12 @@ const handleQueueLogic = async (
   whatsappId: number,
   messageBody: string,
   ticket: Ticket,
-  contactPayload: ContactPayload
+  contactPayload: ContactPayload,
+  channel = "whatsapp"
 ): Promise<void> => {
   const { queues, greetingMessage } = await ShowWhatsAppService(whatsappId);
+  const provider = getProvider(channel);
+  const chatId = buildChatId(channel, contactPayload.number, false);
 
   if (queues.length === 1) {
     await UpdateTicketService({
@@ -175,11 +191,7 @@ const handleQueueLogic = async (
     );
 
     try {
-      await whatsappProvider.sendMessage(
-        whatsappId,
-        `${contactPayload.number}@c.us`,
-        body
-      );
+      await provider.sendMessage(whatsappId, chatId, body);
     } catch (error) {
       logger.error("Error sending queue greeting message:", error);
     }
@@ -197,11 +209,7 @@ const handleQueueLogic = async (
     const debouncedSentMessage = debounce(
       async () => {
         try {
-          await whatsappProvider.sendMessage(
-            whatsappId,
-            `${contactPayload.number}@c.us`,
-            body
-          );
+          await provider.sendMessage(whatsappId, chatId, body);
         } catch (error) {
           logger.error("Error sending queue options message:", error);
         }
@@ -258,6 +266,13 @@ export const handleMessage = async (
       groupContact
     );
 
+    // Incrementar unreadMessages para mensagens recebidas (não enviadas por nós)
+    if (!processedMessage.fromMe) {
+      await ticket.increment("unreadMessages", { by: 1 });
+    }
+
+    invalidateTicketCache(ticket.id);
+
     const messageData: any = {
       id: processedMessage.id,
       ticketId: ticket.id,
@@ -288,6 +303,7 @@ export const handleMessage = async (
     }
 
     await ticket.update({ lastMessage: lastMessageText });
+    invalidateTicketCache(ticket.id);
 
     await CreateMessageService({ messageData });
 
@@ -304,7 +320,8 @@ export const handleMessage = async (
         contextPayload.whatsappId,
         processedMessage.body,
         ticket,
-        contactPayload
+        contactPayload,
+        contextPayload.channel || "whatsapp"
       );
     }
   } catch (err) {
@@ -324,12 +341,10 @@ export const handleMessageAck = async (
   messageId: string,
   ack: MessageAck
 ): Promise<void> => {
-  await new Promise(r => setTimeout(r, 500));
-
   const io = getIO();
 
   try {
-    const messageToUpdate = await Message.findByPk(messageId, {
+    let messageToUpdate = await Message.findByPk(messageId, {
       include: [
         "contact",
         {
@@ -339,6 +354,21 @@ export const handleMessageAck = async (
         }
       ]
     });
+
+    if (!messageToUpdate) {
+      // Retry once after 200ms in case the message is still being persisted
+      await new Promise(r => setTimeout(r, 200));
+      messageToUpdate = await Message.findByPk(messageId, {
+        include: [
+          "contact",
+          {
+            model: Message,
+            as: "quotedMsg",
+            include: ["contact"]
+          }
+        ]
+      });
+    }
 
     if (!messageToUpdate) {
       return;

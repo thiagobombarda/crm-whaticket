@@ -1,7 +1,11 @@
-import fs from "fs";
+import { promises as fsPromises } from "fs";
 import AppError from "../../errors/AppError";
 import Ticket from "../../models/Ticket";
-import { whatsappProvider, ProviderMessage } from "../../providers/WhatsApp";
+import Whatsapp from "../../models/Whatsapp";
+import { getProvider, ProviderMessage } from "../../providers/WhatsApp";
+import { logger } from "../../utils/logger";
+import { checkOutboundRateLimit } from "../../helpers/rateLimiter";
+import { buildChatId } from "../../helpers/buildChatId";
 
 import formatBody from "../../helpers/Mustache";
 
@@ -21,7 +25,11 @@ const SendWhatsAppMedia = async ({
       throw new AppError("ERR_TICKET_NO_WHATSAPP");
     }
 
-    const chatId = `${ticket.contact.number}@${ticket.isGroup ? "g" : "c"}.us`;
+    const whatsapp = ticket.whatsapp || await Whatsapp.findByPk(ticket.whatsappId);
+    const channel = whatsapp?.channel || "whatsapp";
+    const chatId = buildChatId(channel, ticket.contact.number, ticket.isGroup);
+
+    await checkOutboundRateLimit(ticket.whatsappId);
 
     const hasBody = body
       ? formatBody(body as string, ticket.contact)
@@ -41,7 +49,7 @@ const SendWhatsAppMedia = async ({
         !/^.*\.(jpe?g|png|gif)?$/i.exec(media.filename)
     };
 
-    const sentMessage = await whatsappProvider.sendMedia(
+    const sentMessage = await getProvider(channel).sendMedia(
       ticket.whatsappId,
       chatId,
       mediaInput,
@@ -50,11 +58,11 @@ const SendWhatsAppMedia = async ({
 
     await ticket.update({ lastMessage: body || media.filename });
 
-    fs.unlinkSync(media.path);
+    await fsPromises.unlink(media.path);
 
     return sentMessage;
   } catch (err) {
-    console.log(err);
+    logger.error({ info: "Error sending WhatsApp media", err, chatId: ticket?.contact?.number });
     throw new AppError("ERR_SENDING_WAPP_MSG");
   }
 };

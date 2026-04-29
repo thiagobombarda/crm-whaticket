@@ -3,8 +3,10 @@ import { Op } from "sequelize";
 import Contact from "../../models/Contact";
 import Ticket from "../../models/Ticket";
 import ShowTicketService from "./ShowTicketService";
+import { withRedisLock } from "../../helpers/withRedisLock";
+import { invalidateTicketListCache } from "./ListTicketsService";
 
-const FindOrCreateTicketService = async (
+const doFindOrCreate = async (
   contact: Contact,
   whatsappId: number,
   unreadMessages: number,
@@ -20,9 +22,8 @@ const FindOrCreateTicketService = async (
     }
   });
 
-  if (ticket) {
-    await ticket.update({ unreadMessages });
-  }
+  // unreadMessages is managed by handleWhatsappEvents via ticket.increment()
+  // Do not overwrite it here
 
   if (!ticket && groupContact) {
     ticket = await Ticket.findOne({
@@ -46,7 +47,7 @@ const FindOrCreateTicketService = async (
     ticket = await Ticket.findOne({
       where: {
         updatedAt: {
-          [Op.between]: [+subHours(new Date(), 2), +new Date()]
+          [Op.between]: [+subHours(new Date(), 24), +new Date()]
         },
         contactId: contact.id,
         whatsappId: whatsappId
@@ -70,12 +71,27 @@ const FindOrCreateTicketService = async (
       isGroup: !!groupContact,
       unreadMessages,
       whatsappId
-    });
+    } as any);
+
+    // New ticket — evict list caches so agents see it immediately
+    invalidateTicketListCache().catch(() => {});
   }
 
-  ticket = await ShowTicketService(ticket.id);
+  return ShowTicketService(ticket.id);
+};
 
-  return ticket;
+const FindOrCreateTicketService = async (
+  contact: Contact,
+  whatsappId: number,
+  unreadMessages: number,
+  groupContact?: Contact
+): Promise<Ticket> => {
+  const contactId = groupContact ? groupContact.id : contact.id;
+  const lockKey = `ticket:lock:${contactId}:${whatsappId}`;
+
+  return withRedisLock(lockKey, () =>
+    doFindOrCreate(contact, whatsappId, unreadMessages, groupContact)
+  );
 };
 
 export default FindOrCreateTicketService;

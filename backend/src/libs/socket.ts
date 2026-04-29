@@ -1,4 +1,6 @@
 import { Server as SocketIO } from "socket.io";
+import { createAdapter } from "@socket.io/redis-adapter";
+import { createClient } from "redis";
 import { Server } from "http";
 import { verify } from "jsonwebtoken";
 import AppError from "../errors/AppError";
@@ -7,21 +9,37 @@ import authConfig from "../config/auth";
 
 let io: SocketIO;
 
-export const initIO = (httpServer: Server): SocketIO => {
+export const initIO = async (httpServer: Server): Promise<SocketIO> => {
   io = new SocketIO(httpServer, {
     cors: {
       origin: process.env.FRONTEND_URL
     }
   });
 
+  // Use Redis adapter when REDIS_URL is configured so that Socket.io events
+  // are shared across all worker processes (PM2 cluster mode).
+  if (process.env.REDIS_URL) {
+    try {
+      const pubClient = createClient({ url: process.env.REDIS_URL });
+      const subClient = pubClient.duplicate();
+      await Promise.all([pubClient.connect(), subClient.connect()]);
+      io.adapter(createAdapter(pubClient, subClient));
+      logger.info("Socket.io Redis adapter initialized (cluster-ready)");
+    } catch (err) {
+      logger.warn({ info: "Socket.io Redis adapter failed, using in-memory adapter", err });
+    }
+  }
+
   io.on("connection", socket => {
-    const { token } = socket.handshake.query;
+    const rawToken = socket.handshake.query.token;
+    const token = Array.isArray(rawToken) ? rawToken[0] : rawToken;
     let tokenData = null;
     try {
-      tokenData = verify(token, authConfig.secret);
-      logger.debug(JSON.stringify(tokenData), "io-onConnection: tokenData");
+      if (!token) throw new Error("No token");
+      tokenData = verify(token, authConfig.secret, { algorithms: ["HS256"] });
+      logger.debug({ tokenData }, "io-onConnection: tokenData");
     } catch (error) {
-      logger.error(JSON.stringify(error), "Error decoding token");
+      logger.error({ error }, "Error decoding token");
       socket.disconnect();
       return io;
     }
@@ -49,7 +67,7 @@ export const initIO = (httpServer: Server): SocketIO => {
     return socket;
   });
   return io;
-};
+}
 
 export const getIO = (): SocketIO => {
   if (!io) {

@@ -22,7 +22,7 @@ const ListQuickAnswerService = async ({
       "LIKE",
       `%${searchParam.toLowerCase().trim()}%`
     )
-  };
+  } as any;
   const limit = 20;
   const offset = limit * (+pageNumber - 1);
 

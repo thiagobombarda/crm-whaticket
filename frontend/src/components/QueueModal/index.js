@@ -5,7 +5,6 @@ import { Formik, Form, Field } from "formik";
 import { toast } from "react-toastify";
 
 import { makeStyles } from "@material-ui/core/styles";
-import { green } from "@material-ui/core/colors";
 import Button from "@material-ui/core/Button";
 import TextField from "@material-ui/core/TextField";
 import Dialog from "@material-ui/core/Dialog";
@@ -13,23 +12,65 @@ import DialogActions from "@material-ui/core/DialogActions";
 import DialogContent from "@material-ui/core/DialogContent";
 import DialogTitle from "@material-ui/core/DialogTitle";
 import CircularProgress from "@material-ui/core/CircularProgress";
+import { IconButton, InputAdornment } from "@material-ui/core";
+import { Pipette as Colorize } from "lucide-react";
 
 import { i18n } from "../../translate/i18n";
-
 import api from "../../services/api";
 import toastError from "../../errors/toastError";
 import ColorPicker from "../ColorPicker";
-import { IconButton, InputAdornment } from "@material-ui/core";
-import { Colorize } from "@material-ui/icons";
 
 const useStyles = makeStyles(theme => ({
 	root: {
 		display: "flex",
 		flexWrap: "wrap",
 	},
-	textField: {
-		marginRight: theme.spacing(1),
+
+	dialogTitle: {
+		padding: "24px 24px 16px",
+		borderBottom: "1px solid #E5E9EF",
+		"& h2": {
+			fontFamily: '"Fraunces", Georgia, serif',
+			fontWeight: 700,
+			fontSize: 20,
+			color: "#0A0F1E",
+			letterSpacing: "-0.3px",
+		},
+	},
+
+	dialogContent: {
+		padding: "24px",
+		display: "flex",
+		flexDirection: "column",
+		gap: 16,
+	},
+
+	colorRow: {
+		display: "flex",
+		gap: theme.spacing(2),
+		alignItems: "flex-start",
+	},
+
+	colorField: {
 		flex: 1,
+	},
+
+	colorAdorment: {
+		width: 20,
+		height: 20,
+		borderRadius: 5,
+		border: "1px solid rgba(0,0,0,0.12)",
+	},
+
+	colorizeIcon: {
+		color: "#9BA3B0",
+		fontSize: 20,
+	},
+
+	dialogActions: {
+		padding: "16px 24px",
+		borderTop: "1px solid #E5E9EF",
+		gap: 8,
 	},
 
 	btnWrapper: {
@@ -37,20 +78,41 @@ const useStyles = makeStyles(theme => ({
 	},
 
 	buttonProgress: {
-		color: green[500],
+		color: "#25D366",
 		position: "absolute",
 		top: "50%",
 		left: "50%",
 		marginTop: -12,
 		marginLeft: -12,
 	},
-	formControl: {
-		margin: theme.spacing(1),
-		minWidth: 120,
+
+	cancelBtn: {
+		fontFamily: '"DM Sans", system-ui, sans-serif',
+		fontWeight: 500,
+		color: "#9BA3B0",
+		borderColor: "#E5E9EF",
+		borderRadius: 11,
+		"&:hover": {
+			borderColor: "#9BA3B0",
+			backgroundColor: "#F7F8FA",
+		},
 	},
-	colorAdorment: {
-		width: 20,
-		height: 20,
+
+	saveBtn: {
+		fontFamily: '"DM Sans", system-ui, sans-serif',
+		fontWeight: 600,
+		borderRadius: 11,
+		background: "linear-gradient(135deg, #25D366 0%, #1DAB57 100%)",
+		color: "#ffffff",
+		boxShadow: "none",
+		"&:hover": {
+			background: "linear-gradient(135deg, #1DAB57 0%, #158A3E 100%)",
+			boxShadow: "none",
+		},
+		"&:disabled": {
+			background: "#E5E9EF",
+			color: "#9BA3B0",
+		},
 	},
 }));
 
@@ -81,20 +143,14 @@ const QueueModal = ({ open, onClose, queueId }) => {
 			if (!queueId) return;
 			try {
 				const { data } = await api.get(`/queue/${queueId}`);
-				setQueue(prevState => {
-					return { ...prevState, ...data };
-				});
+				setQueue(prevState => ({ ...prevState, ...data }));
 			} catch (err) {
 				toastError(err);
 			}
 		})();
 
 		return () => {
-			setQueue({
-				name: "",
-				color: "",
-				greetingMessage: "",
-			});
+			setQueue({ name: "", color: "", greetingMessage: "" });
 		};
 	}, [queueId, open]);
 
@@ -119,11 +175,23 @@ const QueueModal = ({ open, onClose, queueId }) => {
 
 	return (
 		<div className={classes.root}>
-			<Dialog open={open} onClose={handleClose} scroll="paper">
-				<DialogTitle>
+			<Dialog
+				open={open}
+				onClose={handleClose}
+				maxWidth="sm"
+				fullWidth
+				scroll="paper"
+				PaperProps={{
+					style: {
+						borderRadius: 14,
+						border: "1px solid #E5E9EF",
+					},
+				}}
+			>
+				<DialogTitle className={classes.dialogTitle}>
 					{queueId
-						? `${i18n.t("queueModal.title.edit")}`
-						: `${i18n.t("queueModal.title.add")}`}
+						? i18n.t("queueModal.title.edit")
+						: i18n.t("queueModal.title.add")}
 				</DialogTitle>
 				<Formik
 					initialValues={queue}
@@ -138,108 +206,108 @@ const QueueModal = ({ open, onClose, queueId }) => {
 				>
 					{({ touched, errors, isSubmitting, values }) => (
 						<Form>
-							<DialogContent dividers>
-								<Field
-									as={TextField}
-									label={i18n.t("queueModal.form.name")}
-									autoFocus
-									name="name"
-									error={touched.name && Boolean(errors.name)}
-									helperText={touched.name && errors.name}
-									variant="outlined"
-									margin="dense"
-									className={classes.textField}
-								/>
-								<Field
-									as={TextField}
-									label={i18n.t("queueModal.form.color")}
-									name="color"
-									id="color"
-									onFocus={() => {
-										setColorPickerModalOpen(true);
-										greetingRef.current.focus();
-									}}
-									error={touched.color && Boolean(errors.color)}
-									helperText={touched.color && errors.color}
-									InputProps={{
-										startAdornment: (
-											<InputAdornment position="start">
-												<div
-													style={{ backgroundColor: values.color }}
-													className={classes.colorAdorment}
-												></div>
-											</InputAdornment>
-										),
-										endAdornment: (
-											<IconButton
-												size="small"
-												color="default"
-												onClick={() => setColorPickerModalOpen(true)}
-											>
-												<Colorize />
-											</IconButton>
-										),
-									}}
-									variant="outlined"
-									margin="dense"
-								/>
+							<DialogContent className={classes.dialogContent}>
+								<div className={classes.colorRow}>
+									<Field
+										as={TextField}
+										label={i18n.t("queueModal.form.name")}
+										autoFocus
+										name="name"
+										error={touched.name && Boolean(errors.name)}
+										helperText={touched.name && errors.name}
+										variant="outlined"
+										margin="dense"
+										style={{ flex: 1 }}
+									/>
+									<Field
+										as={TextField}
+										label={i18n.t("queueModal.form.color")}
+										name="color"
+										id="color"
+										onFocus={() => {
+											setColorPickerModalOpen(true);
+											greetingRef.current.focus();
+										}}
+										error={touched.color && Boolean(errors.color)}
+										helperText={touched.color && errors.color}
+										InputProps={{
+											startAdornment: (
+												<InputAdornment position="start">
+													<div
+														style={{ backgroundColor: values.color }}
+														className={classes.colorAdorment}
+													/>
+												</InputAdornment>
+											),
+											endAdornment: (
+												<InputAdornment position="end">
+													<IconButton
+														size="small"
+														onClick={() => setColorPickerModalOpen(true)}
+													>
+														<Colorize size={20} className={classes.colorizeIcon} />
+													</IconButton>
+												</InputAdornment>
+											),
+										}}
+										variant="outlined"
+										margin="dense"
+										style={{ width: 160 }}
+									/>
+								</div>
+
 								<ColorPicker
 									open={colorPickerModalOpen}
 									handleClose={() => setColorPickerModalOpen(false)}
 									onChange={color => {
 										values.color = color;
-										setQueue(() => {
-											return { ...values, color };
-										});
+										setQueue(() => ({ ...values, color }));
 									}}
 								/>
-								<div>
-									<Field
-										as={TextField}
-										label={i18n.t("queueModal.form.greetingMessage")}
-										type="greetingMessage"
-										multiline
-										inputRef={greetingRef}
-										rows={5}
-										fullWidth
-										name="greetingMessage"
-										error={
-											touched.greetingMessage && Boolean(errors.greetingMessage)
-										}
-										helperText={
-											touched.greetingMessage && errors.greetingMessage
-										}
-										variant="outlined"
-										margin="dense"
-									/>
-								</div>
+
+								<Field
+									as={TextField}
+									label={i18n.t("queueModal.form.greetingMessage")}
+									type="greetingMessage"
+									multiline
+									inputRef={greetingRef}
+									rows={5}
+									fullWidth
+									name="greetingMessage"
+									error={touched.greetingMessage && Boolean(errors.greetingMessage)}
+									helperText={touched.greetingMessage && errors.greetingMessage}
+									variant="outlined"
+									margin="dense"
+								/>
 							</DialogContent>
-							<DialogActions>
+
+							<DialogActions className={classes.dialogActions}>
 								<Button
 									onClick={handleClose}
-									color="secondary"
 									disabled={isSubmitting}
 									variant="outlined"
+									className={classes.cancelBtn}
 								>
 									{i18n.t("queueModal.buttons.cancel")}
 								</Button>
-								<Button
-									type="submit"
-									color="primary"
-									disabled={isSubmitting}
-									variant="contained"
-									className={classes.btnWrapper}
-								>
-									{queueId
-										? `${i18n.t("queueModal.buttons.okEdit")}`
-										: `${i18n.t("queueModal.buttons.okAdd")}`}
+								<div className={classes.btnWrapper}>
+									<Button
+										type="submit"
+										disabled={isSubmitting}
+										variant="contained"
+										className={classes.saveBtn}
+									>
+										{queueId
+											? i18n.t("queueModal.buttons.okEdit")
+											: i18n.t("queueModal.buttons.okAdd")}
+									</Button>
 									{isSubmitting && (
 										<CircularProgress
 											size={24}
 											className={classes.buttonProgress}
 										/>
 									)}
-								</Button>
+								</div>
 							</DialogActions>
 						</Form>
 					)}

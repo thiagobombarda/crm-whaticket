@@ -7,7 +7,7 @@ import DeleteWhatsAppService from "../services/WhatsappService/DeleteWhatsAppSer
 import ListWhatsAppsService from "../services/WhatsappService/ListWhatsAppsService";
 import ShowWhatsAppService from "../services/WhatsappService/ShowWhatsAppService";
 import UpdateWhatsAppService from "../services/WhatsappService/UpdateWhatsAppService";
-import { whatsappProvider } from "../providers/WhatsApp";
+import { getProvider } from "../providers/WhatsApp";
 
 interface WhatsappData {
   name: string;
@@ -16,6 +16,7 @@ interface WhatsappData {
   farewellMessage?: string;
   status?: string;
   isDefault?: boolean;
+  channel?: string;
 }
 
 export const index = async (req: Request, res: Response): Promise<Response> => {
@@ -31,7 +32,8 @@ export const store = async (req: Request, res: Response): Promise<Response> => {
     isDefault,
     greetingMessage,
     farewellMessage,
-    queueIds
+    queueIds,
+    channel
   }: WhatsappData = req.body;
 
   const { whatsapp, oldDefaultWhatsapp } = await CreateWhatsAppService({
@@ -40,7 +42,8 @@ export const store = async (req: Request, res: Response): Promise<Response> => {
     isDefault,
     greetingMessage,
     farewellMessage,
-    queueIds
+    queueIds,
+    channel
   });
 
   StartWhatsAppSession(whatsapp);
@@ -103,8 +106,9 @@ export const remove = async (
 ): Promise<Response> => {
   const { whatsappId } = req.params;
 
+  const whatsappToDelete = await ShowWhatsAppService(whatsappId);
   await DeleteWhatsAppService(whatsappId);
-  whatsappProvider.removeSession(+whatsappId);
+  getProvider(whatsappToDelete.channel || "whatsapp").removeSession(+whatsappId);
 
   const io = getIO();
   io.emit("whatsapp", {

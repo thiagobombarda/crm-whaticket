@@ -75,6 +75,8 @@ const useWhatsApps = () => {
 	useEffect(() => {
 		const socket = openSocket();
 
+		socket.emit("joinNotification");
+
 		socket.on("whatsapp", data => {
 			if (data.action === "update") {
 				dispatch({ type: "UPDATE_WHATSAPPS", payload: data.whatsapp });
