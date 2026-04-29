@@ -117,7 +117,7 @@ const downloadMediaAttachment = async (
 
   try {
     const res = await axios.get(url, { responseType: "arraybuffer" });
-    const contentType: string = res.headers["content-type"] || "image/jpeg";
+    const contentType = String(res.headers["content-type"] || "image/jpeg");
     const ext = contentType.split("/")[1]?.split(";")[0] || "jpg";
     return {
       filename: `instagram_${messageId}.${ext}`,
