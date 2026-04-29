@@ -20,7 +20,8 @@ export interface InboundMessageJobData {
 }
 
 export const startMessageWorker = () => {
-  const concurrency = parseInt(process.env.MESSAGE_WORKER_CONCURRENCY || "5", 10);
+  const parsed = parseInt(process.env.MESSAGE_WORKER_CONCURRENCY || "", 10);
+  const concurrency = Number.isFinite(parsed) && parsed > 0 ? parsed : 5;
 
   const worker = createWorker<InboundMessageJobData>(
     "inbound-messages",

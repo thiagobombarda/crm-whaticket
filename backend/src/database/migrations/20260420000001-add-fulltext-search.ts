@@ -49,26 +49,25 @@ module.exports = {
         FOR EACH ROW EXECUTE FUNCTION messages_search_vector_update();
     `);
 
-    // Backfill existing rows in batches to avoid full-table lock
+    // Backfill existing rows in batches to avoid full-table lock.
+    // Messages.id is TEXT (WhatsApp message IDs), so we batch by selecting
+    // rows where search_vector IS NULL with LIMIT, looping until zero rows updated.
     await queryInterface.sequelize.query(`
       DO $$
       DECLARE
-        batch_size INT := 5000;
-        last_id    BIGINT := 0;
-        max_id     BIGINT;
         rows_updated INT;
       BEGIN
-        SELECT COALESCE(MAX(id), 0) INTO max_id FROM "Messages";
-
-        WHILE last_id < max_id LOOP
+        LOOP
           UPDATE "Messages"
           SET search_vector = to_tsvector('portuguese', coalesce(body, ''))
-          WHERE id > last_id
-            AND id <= last_id + batch_size
-            AND search_vector IS NULL;
+          WHERE id IN (
+            SELECT id FROM "Messages"
+            WHERE search_vector IS NULL
+            LIMIT 5000
+          );
 
           GET DIAGNOSTICS rows_updated = ROW_COUNT;
-          last_id := last_id + batch_size;
+          EXIT WHEN rows_updated = 0;
 
           -- Yield to other transactions between batches
           PERFORM pg_sleep(0.1);

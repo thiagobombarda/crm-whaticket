@@ -2,7 +2,8 @@ import { getRedisClient } from "../libs/redisStore";
 import { logger } from "../utils/logger";
 
 const WINDOW_MS = 60_000; // 1 minute sliding window
-const MAX_SENDS = parseInt(process.env.OUTBOUND_RATE_LIMIT || "20", 10);
+const parsedRateLimit = parseInt(process.env.OUTBOUND_RATE_LIMIT || "", 10);
+const MAX_SENDS = Number.isFinite(parsedRateLimit) && parsedRateLimit > 0 ? parsedRateLimit : 20;
 
 /**
  * Sliding-window rate limiter for outbound WhatsApp messages.
