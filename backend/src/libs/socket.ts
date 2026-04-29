@@ -26,7 +26,10 @@ export const initIO = async (httpServer: Server): Promise<SocketIO> => {
       io.adapter(createAdapter(pubClient, subClient));
       logger.info("Socket.io Redis adapter initialized (cluster-ready)");
     } catch (err) {
-      logger.warn({ info: "Socket.io Redis adapter failed, using in-memory adapter", err });
+      logger.warn({
+        info: "Socket.io Redis adapter failed, using in-memory adapter",
+        err
+      });
     }
   }
 
@@ -67,7 +70,7 @@ export const initIO = async (httpServer: Server): Promise<SocketIO> => {
     return socket;
   });
   return io;
-}
+};
 
 export const getIO = (): SocketIO => {
   if (!io) {

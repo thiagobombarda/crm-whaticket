@@ -108,7 +108,9 @@ export const remove = async (
 
   const whatsappToDelete = await ShowWhatsAppService(whatsappId);
   await DeleteWhatsAppService(whatsappId);
-  getProvider(whatsappToDelete.channel || "whatsapp").removeSession(+whatsappId);
+  getProvider(whatsappToDelete.channel || "whatsapp").removeSession(
+    +whatsappId
+  );
 
   const io = getIO();
   io.emit("whatsapp", {

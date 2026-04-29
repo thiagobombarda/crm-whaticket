@@ -60,9 +60,18 @@ import {
 } from "../../../handlers/handleWhatsappEvents";
 import { getInboundQueue } from "../../../libs/queue";
 
-const PINO_LEVELS = ["fatal", "error", "warn", "info", "debug", "trace", "silent"];
+const PINO_LEVELS = [
+  "fatal",
+  "error",
+  "warn",
+  "info",
+  "debug",
+  "trace",
+  "silent"
+];
 const envLogLevel = process.env.BAILEYS_LOG_LEVEL;
-const baileysLevel = envLogLevel && PINO_LEVELS.includes(envLogLevel) ? envLogLevel : "silent";
+const baileysLevel =
+  envLogLevel && PINO_LEVELS.includes(envLogLevel) ? envLogLevel : "silent";
 
 const baileysLogger = pino({ level: baileysLevel }) as any;
 
@@ -82,8 +91,12 @@ const msgRetryNodeCache = new NodeCache({
 
 const msgRetryCounterCache: CacheStore = {
   get: (key: string) => msgRetryNodeCache.get(key),
-  set: (key: string, value: any) => { msgRetryNodeCache.set(key, value); },
-  del: (key: string) => { msgRetryNodeCache.del(key); },
+  set: (key: string, value: any) => {
+    msgRetryNodeCache.set(key, value);
+  },
+  del: (key: string) => {
+    msgRetryNodeCache.del(key);
+  },
   flushAll: () => msgRetryNodeCache.flushAll()
 };
 
@@ -1052,12 +1065,23 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
       // Códigos que indicam sessão inválida — não reconectar
       const NON_RECOVERABLE = [401, 440];
       if (NON_RECOVERABLE.includes(statusCode)) {
-        await whatsapp.update({ status: "DISCONNECTED", qrcode: "", retries: 0 });
+        await whatsapp.update({
+          status: "DISCONNECTED",
+          qrcode: "",
+          retries: 0
+        });
         const updatedNR = await Whatsapp.findByPk(sessionId);
         if (updatedNR) {
-          io.to("notification").emit("whatsappSession", { action: "update", session: updatedNR });
+          io.to("notification").emit("whatsappSession", {
+            action: "update",
+            session: updatedNR
+          });
         }
-        logger.warn({ info: "Non-recoverable disconnect", sessionId, statusCode });
+        logger.warn({
+          info: "Non-recoverable disconnect",
+          sessionId,
+          statusCode
+        });
         reconnectingGuard.delete(sessionId);
         contactedJids.delete(sessionId);
         await removeSession(sessionId);
@@ -1066,7 +1090,10 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
 
       // Guard: evitar init() concorrente
       if (reconnectingGuard.has(sessionId)) {
-        logger.info({ info: "Already reconnecting, skipping duplicate disconnect event", sessionId });
+        logger.info({
+          info: "Already reconnecting, skipping duplicate disconnect event",
+          sessionId
+        });
         return;
       }
 
@@ -1075,12 +1102,23 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
       const MAX_RETRIES = 10;
 
       if (currentRetries >= MAX_RETRIES) {
-        await whatsapp.update({ status: "DISCONNECTED", qrcode: "", retries: 0 });
+        await whatsapp.update({
+          status: "DISCONNECTED",
+          qrcode: "",
+          retries: 0
+        });
         const updatedMax = await Whatsapp.findByPk(sessionId);
         if (updatedMax) {
-          io.to("notification").emit("whatsappSession", { action: "update", session: updatedMax });
+          io.to("notification").emit("whatsappSession", {
+            action: "update",
+            session: updatedMax
+          });
         }
-        logger.error({ info: "Max retries reached, marking DISCONNECTED", sessionId, retries: currentRetries });
+        logger.error({
+          info: "Max retries reached, marking DISCONNECTED",
+          sessionId,
+          retries: currentRetries
+        });
         reconnectingGuard.delete(sessionId);
         contactedJids.delete(sessionId);
         return;
@@ -1090,7 +1128,10 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
       const delay = Math.min(3000 * Math.pow(2, currentRetries), 60_000);
 
       await whatsapp.update({ status: "OPENING", retries: currentRetries + 1 });
-      io.to("notification").emit("whatsappSession", { action: "update", session: whatsapp });
+      io.to("notification").emit("whatsappSession", {
+        action: "update",
+        session: whatsapp
+      });
 
       logger.info({
         info: "Connection closed, reconnecting with backoff",

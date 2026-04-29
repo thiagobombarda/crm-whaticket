@@ -50,7 +50,13 @@ export const invalidateTicketListCache = async (
   const pattern = userId ? `tickets:list:${userId}:*` : "tickets:list:*";
   let cursor = "0";
   do {
-    const [next, keys] = await redis.scan(cursor, "MATCH", pattern, "COUNT", 100);
+    const [next, keys] = await redis.scan(
+      cursor,
+      "MATCH",
+      pattern,
+      "COUNT",
+      100
+    );
     cursor = next;
     if (keys.length > 0) {
       await redis.del(...keys);
@@ -183,7 +189,15 @@ const ListTicketsService = async ({
   const isSearchQuery = !!searchParam;
   const redis = isSearchQuery ? null : getRedisClient();
   const cacheKey = redis
-    ? buildCacheKey(userId, status, showAll, queueIds, pageNumber, date, withUnreadMessages)
+    ? buildCacheKey(
+        userId,
+        status,
+        showAll,
+        queueIds,
+        pageNumber,
+        date,
+        withUnreadMessages
+      )
     : null;
 
   if (redis && cacheKey) {
@@ -206,9 +220,11 @@ const ListTicketsService = async ({
   const result = { tickets, count, hasMore };
 
   if (redis && cacheKey) {
-    await redis.setex(cacheKey, CACHE_TTL_SECONDS, JSON.stringify(result)).catch(() => {
-      // Cache write failure is non-fatal
-    });
+    await redis
+      .setex(cacheKey, CACHE_TTL_SECONDS, JSON.stringify(result))
+      .catch(() => {
+        // Cache write failure is non-fatal
+      });
   }
 
   return result;

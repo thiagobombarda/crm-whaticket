@@ -1,47 +1,38 @@
 import crypto from "crypto";
 import { Request, Response } from "express";
 import axios from "axios";
-import Whatsapp from "../models/Whatsapp";
 import { handleMessage } from "../handlers/handleWhatsappEvents";
 import { logger } from "../utils/logger";
 import instagramConfig from "../config/instagram";
 import {
-  InstagramSession,
   MetaWebhookPayload,
   MetaMessagingEvent,
   MetaAttachment,
   fromIgsid,
-  parseInstagramSession
+  graphGet,
+  GRAPH_TIMEOUT_MS
 } from "../helpers/instagram";
-import type { ContactPayload, MediaPayload } from "../handlers/handleWhatsappEvents";
+import { instagramSessionRegistry } from "../helpers/instagramSessionRegistry";
+import type {
+  ContactPayload,
+  MediaPayload
+} from "../handlers/handleWhatsappEvents";
 import type { ProviderMessage } from "../providers/WhatsApp/types";
 
-// ─── Page-index cache: facebookPageId → whatsappId ──────────────────────────
+// ─── Attachment type map (module-scope constant) ──────────────────────────────
 
-const pageIndex = new Map<string, number>();
-
-const invalidatePageIndex = (facebookPageId: string): void => {
-  pageIndex.delete(facebookPageId);
+const ATTACHMENT_TYPE_MAP: Record<string, ProviderMessage["type"]> = {
+  image: "image",
+  video: "video",
+  audio: "audio",
+  file: "document",
+  share: "document",
+  template: "document",
+  fallback: "document"
 };
 
-const resolveWhatsappId = async (facebookPageId: string): Promise<number | null> => {
-  const cached = pageIndex.get(facebookPageId);
-  if (cached) return cached;
-
-  const connections = await Whatsapp.findAll({
-    where: { channel: "instagram", status: "CONNECTED" }
-  });
-
-  for (const conn of connections) {
-    const session = parseInstagramSession(conn.session);
-    if (session?.facebookPageId === facebookPageId) {
-      pageIndex.set(facebookPageId, conn.id);
-      return conn.id;
-    }
-  }
-
-  return null;
-};
+const mapAttachmentType = (type: string): ProviderMessage["type"] =>
+  ATTACHMENT_TYPE_MAP[type] ?? "document";
 
 // ─── GET /instagram/webhook — Meta verification ──────────────────────────────
 
@@ -83,30 +74,24 @@ const verifySignature = (req: Request): boolean => {
   }
 
   const signature = req.headers["x-hub-signature-256"] as string | undefined;
-  if (!signature) return false; // Reject unsigned requests in production
+  if (!signature) return false;
 
-  const rawBody = (req as any).rawBody as Buffer | undefined;
+  const rawBody = req.rawBody;
   if (!rawBody) return false;
 
-  const expected = `sha256=${crypto
+  const expectedHex = `sha256=${crypto
     .createHmac("sha256", instagramConfig.appSecret)
     .update(rawBody)
     .digest("hex")}`;
 
-  return signature === expected;
+  const expected = Buffer.from(expectedHex);
+  const actual = Buffer.from(signature);
+
+  if (expected.length !== actual.length) return false;
+  return crypto.timingSafeEqual(expected, actual);
 };
 
 // ─── Attachment helpers ───────────────────────────────────────────────────────
-
-const mapAttachmentType = (type: string): ProviderMessage["type"] => {
-  const map: Record<string, ProviderMessage["type"]> = {
-    image: "image",
-    video: "video",
-    audio: "audio",
-    file: "document"
-  };
-  return map[type] ?? "document";
-};
 
 const downloadMediaAttachment = async (
   attachment: MetaAttachment,
@@ -116,7 +101,10 @@ const downloadMediaAttachment = async (
   if (!url) return undefined;
 
   try {
-    const res = await axios.get(url, { responseType: "arraybuffer" });
+    const res = await axios.get(url, {
+      responseType: "arraybuffer",
+      timeout: GRAPH_TIMEOUT_MS
+    });
     const contentType = String(res.headers["content-type"] || "image/jpeg");
     const ext = contentType.split("/")[1]?.split(";")[0] || "jpg";
     return {
@@ -136,10 +124,15 @@ const fetchContactProfile = async (
 ): Promise<{ name: string; profilePicUrl?: string }> => {
   const fallback = { name: fromIgsid(igsid) };
   try {
-    const res = await axios.get(`${instagramConfig.graphBaseUrl}/${igsid}`, {
-      params: { fields: "name,profile_pic", access_token: pageAccessToken }
-    });
-    return { name: res.data.name || fallback.name, profilePicUrl: res.data.profile_pic };
+    const data = await graphGet<{ name?: string; profile_pic?: string }>(
+      `/${igsid}`,
+      pageAccessToken,
+      { fields: "name,profile_pic" }
+    );
+    return {
+      name: data.name || fallback.name,
+      profilePicUrl: data.profile_pic
+    };
   } catch {
     return fallback;
   }
@@ -171,12 +164,14 @@ const buildProviderMessage = (
 const processMessagingEvent = async (
   event: MetaMessagingEvent,
   whatsappId: number,
-  session: InstagramSession
+  session: { instagramAccountId: string; pageAccessToken: string }
 ): Promise<void> => {
   if (!event.message || event.message.is_echo) return;
 
   const providerMsg = buildProviderMessage(event, session.instagramAccountId);
-  const igsidToFetch = providerMsg.fromMe ? event.recipient.id : event.sender.id;
+  const igsidToFetch = providerMsg.fromMe
+    ? event.recipient.id
+    : event.sender.id;
   const { name, profilePicUrl } = await fetchContactProfile(
     igsidToFetch,
     session.pageAccessToken
@@ -197,32 +192,46 @@ const processMessagingEvent = async (
   await handleMessage(
     providerMsg,
     contactPayload,
-    { whatsappId, unreadMessages: providerMsg.fromMe ? 0 : 1, channel: "instagram" },
+    {
+      whatsappId,
+      unreadMessages: providerMsg.fromMe ? 0 : 1,
+      channel: "instagram"
+    },
     mediaPayload
   );
 };
 
-const processWebhookPayload = async (payload: MetaWebhookPayload): Promise<void> => {
+const processWebhookPayload = async (
+  payload: MetaWebhookPayload
+): Promise<void> => {
   if (payload.object !== "instagram") return;
 
   for (const entry of payload.entry) {
-    const whatsappId = await resolveWhatsappId(entry.id);
+    const whatsappId = await instagramSessionRegistry.resolveWhatsappIdByPage(
+      entry.id
+    );
     if (!whatsappId) {
-      logger.warn({ info: "Instagram webhook: no connection for page", pageId: entry.id });
+      logger.warn({
+        info: "Instagram webhook: no connection for page",
+        pageId: entry.id
+      });
       continue;
     }
 
-    const whatsapp = await Whatsapp.findByPk(whatsappId);
-    const session = parseInstagramSession(whatsapp?.session);
+    const session = instagramSessionRegistry.getByWhatsappId(whatsappId);
     if (!session) continue;
 
-    for (const event of entry.messaging) {
-      await processMessagingEvent(event, whatsappId, session).catch(err => {
-        logger.error({ info: "Instagram: error processing webhook event", err });
-      });
-    }
+    await Promise.all(
+      entry.messaging.map(event =>
+        processMessagingEvent(event, whatsappId, session).catch(err => {
+          logger.error({
+            info: "Instagram: error processing webhook event",
+            err
+          });
+        })
+      )
+    );
   }
 };
 
-export { invalidatePageIndex };
 export default { verify, receive };

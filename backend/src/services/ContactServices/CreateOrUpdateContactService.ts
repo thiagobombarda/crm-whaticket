@@ -121,7 +121,15 @@ const CreateOrUpdateContactService = async ({
   // when two messages from the same new contact arrive simultaneously.
   const lockKey = `contact:lock:${number || lid}`;
   return withRedisLock(lockKey, () =>
-    doCreateOrUpdate({ name, number, lid, profilePicUrl, isGroup, email, extraInfo })
+    doCreateOrUpdate({
+      name,
+      number,
+      lid,
+      profilePicUrl,
+      isGroup,
+      email,
+      extraInfo
+    })
   );
 };
 

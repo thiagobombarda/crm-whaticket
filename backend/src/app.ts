@@ -43,7 +43,10 @@ app.post(
 );
 
 app.use(express.json());
-app.use("/public", express.static(uploadConfig.directory, { dotfiles: "allow" }));
+app.use(
+  "/public",
+  express.static(uploadConfig.directory, { dotfiles: "allow" })
+);
 
 // Health check endpoint for Docker/load balancer probes
 app.get("/health", (_req, res) => res.json({ status: "ok", ts: Date.now() }));

@@ -29,7 +29,10 @@ const bootstrap = async () => {
 
   // Refresh Instagram long-lived tokens daily (they expire after 60 days)
   refreshInstagramTokens().catch(() => {});
-  setInterval(() => refreshInstagramTokens().catch(() => {}), TOKEN_REFRESH_INTERVAL_MS);
+  setInterval(
+    () => refreshInstagramTokens().catch(() => {}),
+    TOKEN_REFRESH_INTERVAL_MS
+  );
 };
 
 bootstrap().catch(err => {

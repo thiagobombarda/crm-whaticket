@@ -81,7 +81,10 @@ export const store = async (req: Request, res: Response): Promise<Response> => {
   return res.send();
 };
 
-export const summary = async (req: Request, res: Response): Promise<Response> => {
+export const summary = async (
+  req: Request,
+  res: Response
+): Promise<Response> => {
   const { ticketId } = req.params;
   const text = await SummarizeMessagesService(ticketId);
   return res.json({ summary: text });

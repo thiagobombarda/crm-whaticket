@@ -5,11 +5,11 @@ module.exports = {
     return queryInterface.addColumn("Tickets", "notes", {
       type: DataTypes.TEXT,
       allowNull: true,
-      defaultValue: null,
+      defaultValue: null
     });
   },
 
   down: (queryInterface: QueryInterface) => {
     return queryInterface.removeColumn("Tickets", "notes");
-  },
+  }
 };

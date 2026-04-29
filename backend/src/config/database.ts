@@ -1,8 +1,19 @@
 require("../bootstrap");
 
-const SUPPORTED_DIALECTS = ["mssql", "mariadb", "mysql", "oracle", "postgres", "db2", "sqlite"];
+const SUPPORTED_DIALECTS = [
+  "mssql",
+  "mariadb",
+  "mysql",
+  "oracle",
+  "postgres",
+  "db2",
+  "sqlite"
+];
 const envDialect = process.env.DB_DIALECT;
-const dialect = envDialect && SUPPORTED_DIALECTS.includes(envDialect) ? envDialect : "postgres";
+const dialect =
+  envDialect && SUPPORTED_DIALECTS.includes(envDialect)
+    ? envDialect
+    : "postgres";
 
 module.exports = {
   dialect,

@@ -5,10 +5,14 @@ module.exports = {
     const transaction = await queryInterface.sequelize.transaction();
     try {
       // Tickets: composite for FindOrCreateTicketService (status + contactId + whatsappId)
-      await queryInterface.addIndex("Tickets", ["status", "contactId", "whatsappId"], {
-        name: "tickets_status_contact_whatsapp_idx",
-        transaction
-      });
+      await queryInterface.addIndex(
+        "Tickets",
+        ["status", "contactId", "whatsappId"],
+        {
+          name: "tickets_status_contact_whatsapp_idx",
+          transaction
+        }
+      );
 
       // Tickets: for ListTicketsService filtered by user
       await queryInterface.addIndex("Tickets", ["userId", "status"], {
@@ -56,13 +60,31 @@ module.exports = {
   down: async (queryInterface: QueryInterface) => {
     const transaction = await queryInterface.sequelize.transaction();
     try {
-      await queryInterface.removeIndex("Tickets", "tickets_status_contact_whatsapp_idx", { transaction });
-      await queryInterface.removeIndex("Tickets", "tickets_user_status_idx", { transaction });
-      await queryInterface.removeIndex("Tickets", "tickets_queue_idx", { transaction });
-      await queryInterface.removeIndex("Tickets", "tickets_updated_at_idx", { transaction });
-      await queryInterface.removeIndex("Tickets", "tickets_unread_idx", { transaction });
-      await queryInterface.removeIndex("Messages", "messages_ticket_created_idx", { transaction });
-      await queryInterface.removeIndex("Messages", "messages_contact_idx", { transaction });
+      await queryInterface.removeIndex(
+        "Tickets",
+        "tickets_status_contact_whatsapp_idx",
+        { transaction }
+      );
+      await queryInterface.removeIndex("Tickets", "tickets_user_status_idx", {
+        transaction
+      });
+      await queryInterface.removeIndex("Tickets", "tickets_queue_idx", {
+        transaction
+      });
+      await queryInterface.removeIndex("Tickets", "tickets_updated_at_idx", {
+        transaction
+      });
+      await queryInterface.removeIndex("Tickets", "tickets_unread_idx", {
+        transaction
+      });
+      await queryInterface.removeIndex(
+        "Messages",
+        "messages_ticket_created_idx",
+        { transaction }
+      );
+      await queryInterface.removeIndex("Messages", "messages_contact_idx", {
+        transaction
+      });
       await transaction.commit();
     } catch (err) {
       await transaction.rollback();

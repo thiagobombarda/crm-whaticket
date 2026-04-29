@@ -3,7 +3,10 @@ import { logger } from "../utils/logger";
 
 const WINDOW_MS = 60_000; // 1 minute sliding window
 const parsedRateLimit = parseInt(process.env.OUTBOUND_RATE_LIMIT || "", 10);
-const MAX_SENDS = Number.isFinite(parsedRateLimit) && parsedRateLimit > 0 ? parsedRateLimit : 20;
+const MAX_SENDS =
+  Number.isFinite(parsedRateLimit) && parsedRateLimit > 0
+    ? parsedRateLimit
+    : 20;
 
 /**
  * Sliding-window rate limiter for outbound WhatsApp messages.
@@ -28,7 +31,7 @@ export const checkOutboundRateLimit = async (
     // Find out how long until the oldest entry expires from the window
     const oldest = await redis.zrange(key, 0, 0, "WITHSCORES");
     const oldestTs = oldest.length > 1 ? parseInt(oldest[1], 10) : now;
-    const waitMs = Math.min((oldestTs + WINDOW_MS) - now, 5_000);
+    const waitMs = Math.min(oldestTs + WINDOW_MS - now, 5_000);
 
     if (waitMs > 0) {
       logger.warn({

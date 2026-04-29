@@ -67,7 +67,12 @@ export const index = async (req: Request, res: Response): Promise<Response> => {
 export const store = async (req: Request, res: Response): Promise<Response> => {
   const { contactId, status, userId, queueId }: TicketData = req.body;
 
-  const ticket = await CreateTicketService({ contactId, status, userId, queueId });
+  const ticket = await CreateTicketService({
+    contactId,
+    status,
+    userId,
+    queueId
+  });
 
   const io = getIO();
   io.to(ticket.status).emit("ticket", {

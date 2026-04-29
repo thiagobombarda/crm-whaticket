@@ -12,7 +12,9 @@ import Contact from "../models/Contact";
 import Ticket from "../models/Ticket";
 import Message from "../models/Message";
 
-import CreateMessageService, { invalidateTicketCache } from "../services/MessageServices/CreateMessageService";
+import CreateMessageService, {
+  invalidateTicketCache
+} from "../services/MessageServices/CreateMessageService";
 import CreateOrUpdateContactService from "../services/ContactServices/CreateOrUpdateContactService";
 import FindOrCreateTicketService from "../services/TicketServices/FindOrCreateTicketService";
 import ShowWhatsAppService from "../services/WhatsappService/ShowWhatsAppService";

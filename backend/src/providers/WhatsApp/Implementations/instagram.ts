@@ -1,20 +1,28 @@
 import axios from "axios";
+import { basename } from "node:path";
 import Whatsapp from "../../../models/Whatsapp";
 import { logger } from "../../../utils/logger";
 import instagramConfig from "../../../config/instagram";
 import {
   InstagramSession,
-  META_ERROR_INVALID_TOKEN,
-  META_ERROR_SESSION_EXPIRED,
+  GraphApiSendResponse,
   TOKEN_EXPIRY_SECONDS,
   TOKEN_REFRESH_THRESHOLD_MS,
+  GRAPH_TIMEOUT_MS,
   emitSessionUpdate,
   getPublicBaseUrl,
   parseInstagramSession,
   toIgsid,
   fromIgsid,
-  unsubscribePageWebhooks
+  graphGet,
+  graphPost,
+  isInvalidTokenError
 } from "../../../helpers/instagram";
+import {
+  instagramSessionRegistry,
+  disconnectInstagramConnection
+} from "../../../helpers/instagramSessionRegistry";
+import AppError from "../../../errors/AppError";
 import type { WhatsappProvider } from "../whatsappProvider";
 import type {
   ProviderMessage,
@@ -23,10 +31,6 @@ import type {
   SendMessageOptions,
   SendMediaOptions
 } from "../types";
-
-// ─── In-memory session cache ─────────────────────────────────────────────────
-
-const sessions = new Map<number, InstagramSession>();
 
 // ─── Utilities ───────────────────────────────────────────────────────────────
 
@@ -37,33 +41,11 @@ const resolveAttachmentType = (mimetype: string): string => {
   return "file";
 };
 
-const extractMessageId = (result: Record<string, unknown>): string =>
-  (result.message_id as string) || String(Date.now());
-
-// ─── Graph API wrappers ──────────────────────────────────────────────────────
-
-const graphPost = async (
-  path: string,
-  token: string,
-  data: object
-): Promise<Record<string, unknown>> => {
-  const res = await axios.post(
-    `${instagramConfig.graphBaseUrl}${path}`,
-    data,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-  return res.data;
-};
-
-const graphGet = async (
-  path: string,
-  token: string,
-  params?: Record<string, string>
-): Promise<Record<string, unknown>> => {
-  const res = await axios.get(`${instagramConfig.graphBaseUrl}${path}`, {
-    params: { access_token: token, ...params }
-  });
-  return res.data;
+const extractMessageId = (result: GraphApiSendResponse): string => {
+  if (!result.message_id) {
+    throw new AppError("ERR_INSTAGRAM_NO_MESSAGE_ID", 500);
+  }
+  return result.message_id;
 };
 
 // ─── Provider implementation ────────────────────────────────────────────────
@@ -78,40 +60,46 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
   }
 
   try {
-    await graphGet("/me", session.pageAccessToken, { fields: "id,name" });
-    sessions.set(whatsapp.id, session);
+    await graphGet<{ id: string; name: string }>(
+      "/me",
+      session.pageAccessToken,
+      { fields: "id,name" }
+    );
+    instagramSessionRegistry.load(whatsapp.id, session);
     await whatsapp.update({ status: "CONNECTED" });
     emitSessionUpdate(whatsapp);
-    logger.info({ info: "Instagram: session restored", whatsappId: whatsapp.id, page: session.pageName });
-  } catch (err: any) {
-    const errCode: number | undefined = err?.response?.data?.error?.code;
-    logger.warn({ info: "Instagram: token validation failed", whatsappId: whatsapp.id, errCode });
-
-    const status = errCode === META_ERROR_INVALID_TOKEN || errCode === META_ERROR_SESSION_EXPIRED ? "WAITING_LOGIN" : "DISCONNECTED";
-    const update = status === "WAITING_LOGIN"
-      ? { status, session: "" }
-      : { status };
+    logger.info({
+      info: "Instagram: session restored",
+      whatsappId: whatsapp.id,
+      page: session.pageName
+    });
+  } catch (err) {
+    const errCode = axios.isAxiosError(err)
+      ? err.response?.data?.error?.code
+      : undefined;
+    logger.warn({
+      info: "Instagram: token validation failed",
+      whatsappId: whatsapp.id,
+      errCode
+    });
+    const status = isInvalidTokenError(err) ? "WAITING_LOGIN" : "DISCONNECTED";
+    const update =
+      status === "WAITING_LOGIN" ? { status, session: "" } : { status };
     await whatsapp.update(update);
     emitSessionUpdate(whatsapp);
   }
 };
 
 const removeSession = (whatsappId: number): void => {
-  sessions.delete(whatsappId);
+  instagramSessionRegistry.remove(whatsappId);
 };
 
 const logout = async (sessionId: number): Promise<void> => {
-  const session = sessions.get(sessionId);
-  removeSession(sessionId);
-
-  if (session) {
-    await unsubscribePageWebhooks(session.facebookPageId, session.pageAccessToken);
-  }
-
   const whatsapp = await Whatsapp.findByPk(sessionId);
   if (whatsapp) {
-    await whatsapp.update({ status: "WAITING_LOGIN", session: "" });
-    emitSessionUpdate(whatsapp);
+    await disconnectInstagramConnection(whatsapp);
+  } else {
+    instagramSessionRegistry.remove(sessionId);
   }
 };
 
@@ -121,10 +109,10 @@ const sendMessage = async (
   body: string,
   _options?: SendMessageOptions
 ): Promise<ProviderMessage> => {
-  const s = sessions.get(sessionId);
-  if (!s) throw new Error("Instagram session not found");
+  const s = instagramSessionRegistry.getByWhatsappId(sessionId);
+  if (!s) throw new AppError("ERR_INSTAGRAM_SESSION_NOT_FOUND", 404);
 
-  const result = await graphPost(
+  const result = await graphPost<GraphApiSendResponse>(
     `/${s.instagramAccountId}/messages`,
     s.pageAccessToken,
     { recipient: { id: toIgsid(to) }, message: { text: body } }
@@ -149,24 +137,37 @@ const sendMedia = async (
   media: ProviderMediaInput,
   options?: SendMediaOptions
 ): Promise<ProviderMessage> => {
-  const s = sessions.get(sessionId);
-  if (!s) throw new Error("Instagram session not found");
+  const s = instagramSessionRegistry.getByWhatsappId(sessionId);
+  if (!s) throw new AppError("ERR_INSTAGRAM_SESSION_NOT_FOUND", 404);
 
   const attachmentType = resolveAttachmentType(media.mimetype);
+  const filename = media.path ? basename(media.path) : media.filename;
   const mediaUrl = media.path
-    ? `${getPublicBaseUrl()}/public/${media.path.split(/[\\/]/).pop()}`
+    ? `${getPublicBaseUrl()}/public/${filename}`
     : null;
 
   const result = await (mediaUrl
-    ? graphPost(`/${s.instagramAccountId}/messages`, s.pageAccessToken, {
-        recipient: { id: toIgsid(to) },
-        message: { attachment: { type: attachmentType, payload: { url: mediaUrl, is_reusable: false } } }
-      })
-    : graphPost(`/${s.instagramAccountId}/messages`, s.pageAccessToken, {
-        recipient: { id: toIgsid(to) },
-        message: { text: options?.caption || media.filename }
-      })
-  );
+    ? graphPost<GraphApiSendResponse>(
+        `/${s.instagramAccountId}/messages`,
+        s.pageAccessToken,
+        {
+          recipient: { id: toIgsid(to) },
+          message: {
+            attachment: {
+              type: attachmentType,
+              payload: { url: mediaUrl, is_reusable: false }
+            }
+          }
+        }
+      )
+    : graphPost<GraphApiSendResponse>(
+        `/${s.instagramAccountId}/messages`,
+        s.pageAccessToken,
+        {
+          recipient: { id: toIgsid(to) },
+          message: { text: options?.caption || media.filename }
+        }
+      ));
 
   return {
     id: extractMessageId(result),
@@ -185,30 +186,43 @@ const getProfilePicUrl = async (
   sessionId: number,
   number: string
 ): Promise<string> => {
-  const s = sessions.get(sessionId);
+  const s = instagramSessionRegistry.getByWhatsappId(sessionId);
   if (!s) return "";
   try {
-    const data = await graphGet(`/${toIgsid(number)}`, s.pageAccessToken, { fields: "profile_pic" });
-    return (data.profile_pic as string) || "";
+    const data = await graphGet<{ profile_pic?: string }>(
+      `/${toIgsid(number)}`,
+      s.pageAccessToken,
+      { fields: "profile_pic" }
+    );
+    return data.profile_pic || "";
   } catch {
     return "";
   }
 };
 
 /** Instagram Messaging API does not support message deletion. */
-const deleteMessage = async (): Promise<void> => {};
+const deleteMessage = async (): Promise<void> => {
+  throw new AppError("ERR_NOT_SUPPORTED_BY_INSTAGRAM", 422);
+};
 
 /** Instagram contact IDs are passed through as-is (IGSID prefixed with "ig_"). */
-const checkNumber = async (_sessionId: number, number: string): Promise<string> => number;
+const checkNumber = async (
+  _sessionId: number,
+  number: string
+): Promise<string> => number;
 
 /** Instagram Messaging API does not provide contact lists. */
-const getContacts = async (): Promise<ProviderContact[]> => [];
+const getContacts = async (): Promise<ProviderContact[]> => {
+  throw new AppError("ERR_NOT_SUPPORTED_BY_INSTAGRAM", 422);
+};
 
 /** Instagram Messaging API does not support marking messages as read via business account. */
 const sendSeen = async (): Promise<void> => {};
 
 /** Instagram Messaging API does not support fetching historical messages. */
-const fetchChatMessages = async (): Promise<ProviderMessage[]> => [];
+const fetchChatMessages = async (): Promise<ProviderMessage[]> => {
+  throw new AppError("ERR_NOT_SUPPORTED_BY_INSTAGRAM", 422);
+};
 
 // ─── Token refresh (called from server.ts daily job) ─────────────────────────
 
@@ -220,38 +234,57 @@ const refreshOneToken = async (conn: Whatsapp): Promise<void> => {
   if (expiresAt - Date.now() > TOKEN_REFRESH_THRESHOLD_MS) return;
 
   try {
-    const res = await axios.get(`${instagramConfig.graphBaseUrl}/oauth/access_token`, {
-      params: {
-        grant_type: "fb_exchange_token",
-        client_id: instagramConfig.appId,
-        client_secret: instagramConfig.appSecret,
-        fb_exchange_token: session.pageAccessToken
+    const data = await axios.get<{ access_token: string; expires_in?: number }>(
+      `${instagramConfig.graphBaseUrl}/oauth/access_token`,
+      {
+        params: {
+          grant_type: "fb_exchange_token",
+          client_id: instagramConfig.appId,
+          client_secret: instagramConfig.appSecret,
+          fb_exchange_token: session.pageAccessToken
+        },
+        timeout: GRAPH_TIMEOUT_MS
       }
-    });
+    );
 
     const newExpiry = new Date(
-      Date.now() + ((res.data.expires_in as number) || TOKEN_EXPIRY_SECONDS) * 1000
+      Date.now() + (data.data.expires_in || TOKEN_EXPIRY_SECONDS) * 1000
     ).toISOString();
 
     const updated: InstagramSession = {
       ...session,
-      pageAccessToken: res.data.access_token as string,
+      pageAccessToken: data.data.access_token,
       tokenExpiresAt: newExpiry
     };
 
     await conn.update({ session: JSON.stringify(updated) });
-    sessions.set(conn.id, updated);
-    logger.info({ info: "Instagram: token refreshed", whatsappId: conn.id, page: session.pageName });
+    instagramSessionRegistry.load(conn.id, updated);
+    logger.info({
+      info: "Instagram: token refreshed",
+      whatsappId: conn.id,
+      page: session.pageName
+    });
   } catch (err) {
-    logger.error({ info: "Instagram: token refresh failed", whatsappId: conn.id, err });
+    logger.error({
+      info: "Instagram: token refresh failed",
+      whatsappId: conn.id,
+      err
+    });
   }
 };
+
+const REFRESH_BATCH_SIZE = 5;
 
 export const refreshInstagramTokens = async (): Promise<void> => {
   const connections = await Whatsapp.findAll({
     where: { channel: "instagram", status: "CONNECTED" }
   });
-  await Promise.all(connections.map(refreshOneToken));
+
+  for (let i = 0; i < connections.length; i += REFRESH_BATCH_SIZE) {
+    await Promise.all(
+      connections.slice(i, i + REFRESH_BATCH_SIZE).map(refreshOneToken)
+    );
+  }
 };
 
 // ─── Export ─────────────────────────────────────────────────────────────────

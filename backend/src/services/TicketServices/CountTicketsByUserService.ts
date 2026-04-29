@@ -25,15 +25,24 @@ const CountTicketsByUserService = async (): Promise<UserTicketCount[]> => {
     attributes: [
       "userId",
       [fn("COUNT", col("Ticket.id")), "total"],
-      [fn("SUM", literal("CASE WHEN status = 'open' THEN 1 ELSE 0 END")), "open"],
-      [fn("SUM", literal("CASE WHEN status = 'closed' THEN 1 ELSE 0 END")), "closed"],
-      [fn("SUM", literal("CASE WHEN status = 'pending' THEN 1 ELSE 0 END")), "pending"],
+      [
+        fn("SUM", literal("CASE WHEN status = 'open' THEN 1 ELSE 0 END")),
+        "open"
+      ],
+      [
+        fn("SUM", literal("CASE WHEN status = 'closed' THEN 1 ELSE 0 END")),
+        "closed"
+      ],
+      [
+        fn("SUM", literal("CASE WHEN status = 'pending' THEN 1 ELSE 0 END")),
+        "pending"
+      ]
     ],
     include: [{ model: User, as: "user", attributes: ["id", "name"] }],
     group: ["userId", "user.id"],
     order: [[fn("COUNT", col("Ticket.id")), "DESC"]],
     raw: true,
-    nest: true,
+    nest: true
   });
 
   return (results as any[]).map(r => ({
@@ -42,7 +51,7 @@ const CountTicketsByUserService = async (): Promise<UserTicketCount[]> => {
     open: Number(r.open) || 0,
     closed: Number(r.closed) || 0,
     pending: Number(r.pending) || 0,
-    total: Number(r.total) || 0,
+    total: Number(r.total) || 0
   }));
 };
 

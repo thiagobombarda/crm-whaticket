@@ -4,7 +4,9 @@ import Contact from "../../models/Contact";
 import CheckSettings from "../../helpers/CheckSettings";
 import AppError from "../../errors/AppError";
 
-const SummarizeMessagesService = async (ticketId: string | number): Promise<string> => {
+const SummarizeMessagesService = async (
+  ticketId: string | number
+): Promise<string> => {
   const apiKey = await CheckSettings("openAiKey");
 
   if (!apiKey || apiKey.trim() === "") {
@@ -14,7 +16,7 @@ const SummarizeMessagesService = async (ticketId: string | number): Promise<stri
   const messages = await Message.findAll({
     where: { ticketId },
     order: [["createdAt", "ASC"]],
-    include: [{ model: Contact, as: "contact", attributes: ["name"] }],
+    include: [{ model: Contact, as: "contact", attributes: ["name"] }]
   });
 
   if (messages.length === 0) {
@@ -24,7 +26,7 @@ const SummarizeMessagesService = async (ticketId: string | number): Promise<stri
   const conversation = messages
     .filter(m => m.body && m.body.trim() !== "")
     .map(m => {
-      const sender = m.fromMe ? "Atendente" : (m.contact?.name || "Cliente");
+      const sender = m.fromMe ? "Atendente" : m.contact?.name || "Cliente";
       return `${sender}: ${m.body}`;
     })
     .join("\n");
@@ -45,15 +47,15 @@ const SummarizeMessagesService = async (ticketId: string | number): Promise<stri
           "**Humor do cliente:** análise do tom emocional e sentimento do cliente ao longo da conversa (ex: satisfeito, animado, hesitante, frustrado, neutro, etc.), com breve justificativa baseada nas mensagens.\n" +
           "REGRA OBRIGATÓRIA: Se o humor do cliente for frustrado, irritado, insatisfeito ou raivoso, ou se houver qualquer sinal de reclamação, conflito, desentendimento ou mal-entendido entre cliente e atendente, você DEVE incluir obrigatoriamente como última seção:\n" +
           "**Alerta de desentendimento:** descrição clara do problema identificado na conversa.\n" +
-          "Apenas omita essa seção se o cliente estiver claramente satisfeito ou neutro durante toda a conversa. Seja direto e objetivo em cada seção.",
+          "Apenas omita essa seção se o cliente estiver claramente satisfeito ou neutro durante toda a conversa. Seja direto e objetivo em cada seção."
       },
       {
         role: "user",
-        content: `Resumo a seguinte conversa de atendimento:\n\n${conversation}`,
-      },
+        content: `Resumo a seguinte conversa de atendimento:\n\n${conversation}`
+      }
     ],
     max_tokens: 600,
-    temperature: 0.3,
+    temperature: 0.3
   });
 
   return response.choices[0].message.content || "";

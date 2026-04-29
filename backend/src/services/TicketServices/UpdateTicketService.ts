@@ -66,11 +66,15 @@ const UpdateTicketService = async ({
 
   await ticket.reload({
     include: [
-      { model: Contact, as: "contact", attributes: ["id", "name", "number", "profilePicUrl"] },
+      {
+        model: Contact,
+        as: "contact",
+        attributes: ["id", "name", "number", "profilePicUrl"]
+      },
       { model: Queue, as: "queue", attributes: ["id", "name", "color"] },
       { model: Whatsapp, as: "whatsapp", attributes: ["name"] },
-      { model: User, as: "user", attributes: ["id", "name"] },
-    ],
+      { model: User, as: "user", attributes: ["id", "name"] }
+    ]
   });
 
   // Evict cached ticket relations so the next message uses fresh data

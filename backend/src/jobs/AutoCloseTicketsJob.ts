@@ -45,12 +45,16 @@ export const startAutoCloseJob = (): void => {
 
       if (closedCount > 0) {
         await invalidateTicketListCache().catch(() => {});
-        logger.info(`AutoCloseJob: fechou ${closedCount} ticket(s) por inatividade de ${WINDOW_HOURS}h`);
+        logger.info(
+          `AutoCloseJob: fechou ${closedCount} ticket(s) por inatividade de ${WINDOW_HOURS}h`
+        );
       }
     } catch (err) {
       logger.error({ err }, "AutoCloseJob: erro ao fechar tickets automáticos");
     }
   }, INTERVAL_MS);
 
-  logger.info(`AutoCloseJob: iniciado (janela ${WINDOW_HOURS}h, intervalo ${INTERVAL_MS / 1000}s)`);
+  logger.info(
+    `AutoCloseJob: iniciado (janela ${WINDOW_HOURS}h, intervalo ${INTERVAL_MS / 1000}s)`
+  );
 };

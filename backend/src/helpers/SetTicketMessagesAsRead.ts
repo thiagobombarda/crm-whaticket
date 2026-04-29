@@ -21,7 +21,8 @@ const SetTicketMessagesAsRead = async (ticket: Ticket): Promise<void> => {
 
   try {
     if (ticket.whatsappId) {
-      const whatsapp = ticket.whatsapp || await Whatsapp.findByPk(ticket.whatsappId);
+      const whatsapp =
+        ticket.whatsapp || (await Whatsapp.findByPk(ticket.whatsappId));
       const channel = whatsapp?.channel || "whatsapp";
       await getProvider(channel).sendSeen(
         ticket.whatsappId,

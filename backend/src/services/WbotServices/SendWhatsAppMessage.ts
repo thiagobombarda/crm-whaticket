@@ -24,7 +24,8 @@ const SendWhatsAppMessage = async ({
     throw new AppError("ERR_TICKET_NO_WHATSAPP");
   }
 
-  const whatsapp = ticket.whatsapp || await Whatsapp.findByPk(ticket.whatsappId);
+  const whatsapp =
+    ticket.whatsapp || (await Whatsapp.findByPk(ticket.whatsappId));
   const channel = whatsapp?.channel || "whatsapp";
   const chatId = buildChatId(channel, ticket.contact.number, ticket.isGroup);
 

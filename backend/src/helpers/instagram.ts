@@ -69,6 +69,8 @@ export const TOKEN_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000; // 1 day
 export const META_ERROR_INVALID_TOKEN = 190;
 export const META_ERROR_SESSION_EXPIRED = 102;
 
+export const GRAPH_TIMEOUT_MS = 10_000;
+
 const IG_PREFIX_REGEX = /^ig_/;
 
 // ─── Shared helpers ──────────────────────────────────────────────────────────
@@ -76,10 +78,11 @@ const IG_PREFIX_REGEX = /^ig_/;
 export const toIgsid = (prefixedId: string): string =>
   prefixedId.replace(IG_PREFIX_REGEX, "");
 
-export const fromIgsid = (rawId: string): string =>
-  `${IG_PREFIX}${rawId}`;
+export const fromIgsid = (rawId: string): string => `${IG_PREFIX}${rawId}`;
 
-export const parseInstagramSession = (raw: string | null | undefined): InstagramSession | null => {
+export const parseInstagramSession = (
+  raw: string | null | undefined
+): InstagramSession | null => {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw);
@@ -100,9 +103,55 @@ export const emitSessionUpdate = (whatsapp: Whatsapp): void => {
 
 export const getPublicBaseUrl = (): string => {
   const backendUrl = process.env.BACKEND_URL || "http://localhost:8080";
-  const proxyPort = process.env.PROXY_PORT;
-  return proxyPort ? `${backendUrl}:${proxyPort}` : backendUrl;
+  const proxyPortRaw = process.env.PROXY_PORT;
+  if (proxyPortRaw) {
+    const parsed = parseInt(proxyPortRaw, 10);
+    if (Number.isFinite(parsed) && parsed > 0 && parsed < 65536) {
+      return `${backendUrl}:${parsed}`;
+    }
+  }
+  return backendUrl;
 };
+
+// ─── Graph API wrappers ──────────────────────────────────────────────────────
+
+export const graphGet = async <T = Record<string, unknown>>(
+  path: string,
+  token: string,
+  params?: Record<string, string>
+): Promise<T> => {
+  const res = await axios.get<T>(`${instagramConfig.graphBaseUrl}${path}`, {
+    params: { access_token: token, ...params },
+    timeout: GRAPH_TIMEOUT_MS
+  });
+  return res.data;
+};
+
+export const graphPost = async <T = Record<string, unknown>>(
+  path: string,
+  token: string,
+  data: object
+): Promise<T> => {
+  const res = await axios.post<T>(
+    `${instagramConfig.graphBaseUrl}${path}`,
+    data,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: GRAPH_TIMEOUT_MS
+    }
+  );
+  return res.data;
+};
+
+export const isInvalidTokenError = (err: unknown): boolean => {
+  if (!axios.isAxiosError(err)) return false;
+  const code: number | undefined = err.response?.data?.error?.code;
+  return (
+    code === META_ERROR_INVALID_TOKEN || code === META_ERROR_SESSION_EXPIRED
+  );
+};
+
+// ─── Page webhook subscription helpers ──────────────────────────────────────
 
 export const subscribePageWebhooks = async (
   pageId: string,
@@ -112,13 +161,19 @@ export const subscribePageWebhooks = async (
     await axios.post(
       `${instagramConfig.graphBaseUrl}/${pageId}/subscribed_apps`,
       null,
-      { params: { subscribed_fields: "messages,messaging_postbacks,message_reads", access_token: pageAccessToken } }
+      {
+        params: {
+          subscribed_fields: "messages,messaging_postbacks,message_reads",
+          access_token: pageAccessToken
+        },
+        timeout: GRAPH_TIMEOUT_MS
+      }
     );
-  } catch (err: any) {
+  } catch (err) {
     logger.warn({
       info: "Instagram: webhook subscription failed (non-fatal)",
       pageId,
-      err: err?.response?.data || err
+      err: axios.isAxiosError(err) ? err.response?.data : err
     });
   }
 };
@@ -127,9 +182,19 @@ export const unsubscribePageWebhooks = async (
   pageId: string,
   pageAccessToken: string
 ): Promise<void> => {
-  await axios
-    .delete(`${instagramConfig.graphBaseUrl}/${pageId}/subscribed_apps`, {
-      params: { access_token: pageAccessToken }
-    })
-    .catch(() => {});
+  try {
+    await axios.delete(
+      `${instagramConfig.graphBaseUrl}/${pageId}/subscribed_apps`,
+      {
+        params: { access_token: pageAccessToken },
+        timeout: GRAPH_TIMEOUT_MS
+      }
+    );
+  } catch (err) {
+    logger.warn({
+      info: "Instagram: webhook unsubscription failed (non-fatal)",
+      pageId,
+      err: axios.isAxiosError(err) ? err.response?.data : err
+    });
+  }
 };
