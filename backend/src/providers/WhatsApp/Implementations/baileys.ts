@@ -60,9 +60,11 @@ import {
 } from "../../../handlers/handleWhatsappEvents";
 import { getInboundQueue } from "../../../libs/queue";
 
-const baileysLogger = pino({
-  level: process.env.BAILEYS_LOG_LEVEL || "silent"
-}) as any;
+const PINO_LEVELS = ["fatal", "error", "warn", "info", "debug", "trace", "silent"];
+const envLogLevel = process.env.BAILEYS_LOG_LEVEL;
+const baileysLevel = envLogLevel && PINO_LEVELS.includes(envLogLevel) ? envLogLevel : "silent";
+
+const baileysLogger = pino({ level: baileysLevel }) as any;
 
 interface Session extends WASocket {
   id: number;
