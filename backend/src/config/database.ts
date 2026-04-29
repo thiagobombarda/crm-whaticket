@@ -1,7 +1,11 @@
 require("../bootstrap");
 
+const SUPPORTED_DIALECTS = ["mssql", "mariadb", "mysql", "oracle", "postgres", "db2", "sqlite"];
+const envDialect = process.env.DB_DIALECT;
+const dialect = envDialect && SUPPORTED_DIALECTS.includes(envDialect) ? envDialect : "postgres";
+
 module.exports = {
-  dialect: process.env.DB_DIALECT || "postgres",
+  dialect,
   timezone: "America/Sao_Paulo",
   host: process.env.DB_HOST,
   port: process.env.DB_PORT ? parseInt(process.env.DB_PORT, 10) : 5432,
