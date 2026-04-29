@@ -5,6 +5,17 @@ _writeFrontendEnvVars() {
 }
 
 _writeNginxEnvVars() {
+    # Strip http:// or https:// from URL_BACKEND — nginx upstream `server`
+    # directive accepts only host:port, not full URLs.
+    if [ -n "${URL_BACKEND}" ]; then
+        URL_BACKEND="$(echo "${URL_BACKEND}" | sed -E 's|^https?://||' | sed -E 's|/$||')"
+        # Append default port if missing (nginx upstream needs host:port)
+        case "${URL_BACKEND}" in
+            *:*) ;;
+            *)   URL_BACKEND="${URL_BACKEND}:3000" ;;
+        esac
+        export URL_BACKEND
+    fi
     dockerize -template /etc/nginx/conf.d/default.conf:/etc/nginx/conf.d/default.conf
 }
 
