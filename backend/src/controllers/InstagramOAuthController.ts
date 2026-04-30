@@ -14,7 +14,8 @@ import {
   exchangeCodeForShortLivedToken,
   exchangeShortForLongLivedToken,
   getAuthenticatedUserInfo,
-  subscribeInstagramWebhooks
+  subscribeInstagramWebhooks,
+  graphGet
 } from "../helpers/instagram";
 import { disconnectInstagramConnection } from "../helpers/instagramSessionRegistry";
 import { closePopupHtml } from "../views/instagramOAuthPopup";
@@ -166,4 +167,94 @@ const disconnect = async (req: Request, res: Response): Promise<Response> => {
   return res.json({ ok: true });
 };
 
-export default { getOAuthUrl, callback, disconnect };
+// ─── GET /instagram/oauth/diagnose ──────────────────────────────────────────
+
+const diagnose = async (req: Request, res: Response): Promise<Response> => {
+  const { whatsappId } = req.query;
+  if (!whatsappId)
+    return res.status(400).json({ error: "whatsappId is required" });
+
+  const whatsapp = await Whatsapp.findByPk(Number(whatsappId));
+  if (!whatsapp || whatsapp.channel !== "instagram")
+    return res.status(404).json({ error: "Connection not found" });
+
+  const session = (() => {
+    try {
+      const p = JSON.parse(whatsapp.session || "{}");
+      if (!p.accessToken || !p.instagramAccountId) return null;
+      return p as InstagramSession;
+    } catch {
+      return null;
+    }
+  })();
+
+  if (!session)
+    return res.status(400).json({ error: "No valid session stored" });
+
+  const [meData, subscribedData] = await Promise.allSettled([
+    graphGet<{
+      user_id?: string;
+      username?: string;
+      name?: string;
+      account_type?: string;
+    }>("/me", session.accessToken, {
+      fields: "user_id,username,name,account_type"
+    }),
+    graphGet<{ data?: unknown[] }>("/me/subscribed_apps", session.accessToken)
+  ]);
+
+  return res.json({
+    tokenValid: meData.status === "fulfilled",
+    username: meData.status === "fulfilled" ? meData.value.username : null,
+    instagramAccountId: session.instagramAccountId,
+    tokenExpiresAt: session.tokenExpiresAt || null,
+    accountType:
+      meData.status === "fulfilled" ? (meData.value.account_type ?? null) : null,
+    subscribedApps:
+      subscribedData.status === "fulfilled"
+        ? (subscribedData.value.data ?? [])
+        : null,
+    tokenError:
+      meData.status === "rejected"
+        ? (meData.reason as Error).message
+        : undefined,
+    subscribeError:
+      subscribedData.status === "rejected"
+        ? (subscribedData.reason as Error).message
+        : undefined
+  });
+};
+
+// ─── POST /instagram/oauth/resubscribe ──────────────────────────────────────
+
+const resubscribe = async (req: Request, res: Response): Promise<Response> => {
+  const { whatsappId } = req.body;
+  if (!whatsappId)
+    return res.status(400).json({ error: "whatsappId is required" });
+
+  const whatsapp = await Whatsapp.findByPk(Number(whatsappId));
+  if (!whatsapp || whatsapp.channel !== "instagram")
+    return res.status(404).json({ error: "Connection not found" });
+
+  const session = (() => {
+    try {
+      const p = JSON.parse(whatsapp.session || "{}");
+      if (!p.accessToken) return null;
+      return p as InstagramSession;
+    } catch {
+      return null;
+    }
+  })();
+
+  if (!session)
+    return res.status(400).json({ error: "No valid session stored" });
+
+  await subscribeInstagramWebhooks(session.accessToken);
+  logger.info({
+    info: "Instagram: webhook re-subscribed",
+    whatsappId: Number(whatsappId)
+  });
+  return res.json({ ok: true });
+};
+
+export default { getOAuthUrl, callback, disconnect, diagnose, resubscribe };

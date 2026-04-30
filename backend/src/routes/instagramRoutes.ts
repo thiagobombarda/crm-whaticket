@@ -19,5 +19,15 @@ instagramRoutes.post(
   isAuth,
   InstagramOAuthController.disconnect
 );
+instagramRoutes.get(
+  "/instagram/oauth/diagnose",
+  isAuth,
+  InstagramOAuthController.diagnose
+);
+instagramRoutes.post(
+  "/instagram/oauth/resubscribe",
+  isAuth,
+  InstagramOAuthController.resubscribe
+);
 
 export default instagramRoutes;

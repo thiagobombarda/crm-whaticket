@@ -52,7 +52,10 @@ const verify = (req: Request, res: Response): void => {
 // ─── POST /instagram/webhook — Incoming messages ─────────────────────────────
 
 const receive = (req: Request, res: Response): void => {
+  logger.info({ info: "Instagram: webhook POST received" });
+
   if (!verifySignature(req)) {
+    logger.warn({ info: "Instagram: webhook signature verification failed" });
     res.sendStatus(403);
     return;
   }

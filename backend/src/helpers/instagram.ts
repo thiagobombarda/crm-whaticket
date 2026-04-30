@@ -3,6 +3,7 @@ import Whatsapp from "../models/Whatsapp";
 import { getIO } from "../libs/socket";
 import { logger } from "../utils/logger";
 import instagramConfig from "../config/instagram";
+import AppError from "../errors/AppError";
 
 // ─── Shared types ────────────────────────────────────────────────────────────
 
@@ -267,16 +268,17 @@ export const subscribeInstagramWebhooks = async (
   accessToken: string
 ): Promise<void> => {
   try {
-    await graphPost(
-      "/me/subscribed_apps",
-      accessToken,
-      {} // subscribed_fields configured at app-level for IG Login
-    );
+    await graphPost("/me/subscribed_apps", accessToken, {});
   } catch (err) {
-    logger.warn({
-      info: "Instagram: webhook subscription failed (non-fatal)",
-      err: axios.isAxiosError(err) ? err.response?.data : err
+    const errorData = axios.isAxiosError(err) ? err.response?.data : err;
+    logger.error({
+      info: "Instagram: webhook subscription failed",
+      err: errorData
     });
+    throw new AppError(
+      "Falha ao registrar webhooks do Instagram. Verifique se a conta é Profissional e o app tem permissões corretas.",
+      500
+    );
   }
 };
 
