@@ -9,7 +9,8 @@ import {
   AllowNull,
   Unique,
   Default,
-  HasMany
+  HasMany,
+  DataType
 } from "sequelize-typescript";
 import ContactCustomField from "./ContactCustomField";
 import Ticket from "./Ticket";
@@ -37,7 +38,7 @@ class Contact extends Model<Contact> {
   @Column
   email: string;
 
-  @Column
+  @Column(DataType.TEXT)
   profilePicUrl: string;
 
   @Default(false)
