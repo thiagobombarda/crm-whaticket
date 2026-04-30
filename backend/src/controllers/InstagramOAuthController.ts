@@ -8,13 +8,13 @@ import authConfig from "../config/auth";
 import instagramConfig from "../config/instagram";
 import {
   InstagramSession,
-  FacebookPage,
   TOKEN_EXPIRY_SECONDS,
-  GRAPH_TIMEOUT_MS,
   emitSessionUpdate,
   getPublicBaseUrl,
-  subscribePageWebhooks,
-  graphGet
+  exchangeCodeForShortLivedToken,
+  exchangeShortForLongLivedToken,
+  getAuthenticatedUserInfo,
+  subscribeInstagramWebhooks
 } from "../helpers/instagram";
 import { disconnectInstagramConnection } from "../helpers/instagramSessionRegistry";
 import { closePopupHtml } from "../views/instagramOAuthPopup";
@@ -25,63 +25,12 @@ const buildRedirectUri = (): string =>
   `${getPublicBaseUrl()}/instagram/oauth/callback`;
 
 const OAUTH_SCOPES = [
-  "instagram_basic",
-  "instagram_manage_messages",
-  "pages_show_list",
-  "pages_messaging",
-  "pages_read_engagement"
+  "instagram_business_basic",
+  "instagram_business_manage_messages",
+  "instagram_business_manage_comments",
+  "instagram_business_content_publish",
+  "instagram_business_manage_insights"
 ].join(",");
-
-const exchangeCodeForLongLivedToken = async (
-  code: string,
-  redirectUri: string
-): Promise<{ longToken: string; tokenExpiresAt: string }> => {
-  const { appId, appSecret, graphBaseUrl } = instagramConfig;
-
-  const { data: shortData } = await axios.get<{ access_token: string }>(
-    `${graphBaseUrl}/oauth/access_token`,
-    {
-      params: {
-        client_id: appId,
-        client_secret: appSecret,
-        redirect_uri: redirectUri,
-        code
-      },
-      timeout: GRAPH_TIMEOUT_MS
-    }
-  );
-
-  const { data: longData } = await axios.get<{
-    access_token: string;
-    expires_in?: number;
-  }>(`${graphBaseUrl}/oauth/access_token`, {
-    params: {
-      grant_type: "fb_exchange_token",
-      client_id: appId,
-      client_secret: appSecret,
-      fb_exchange_token: shortData.access_token
-    },
-    timeout: GRAPH_TIMEOUT_MS
-  });
-
-  const expiresIn = longData.expires_in || TOKEN_EXPIRY_SECONDS;
-  return {
-    longToken: longData.access_token,
-    tokenExpiresAt: new Date(Date.now() + expiresIn * 1000).toISOString()
-  };
-};
-
-const findInstagramPage = async (
-  longToken: string
-): Promise<FacebookPage | null> => {
-  const result = await graphGet<{ data: FacebookPage[] }>(
-    "/me/accounts",
-    longToken,
-    { fields: "id,name,access_token,instagram_business_account" }
-  );
-  const pages = Array.isArray(result.data) ? result.data : [];
-  return pages.find(p => p.instagram_business_account?.id) ?? null;
-};
 
 const saveInstagramConnection = async (
   whatsapp: Whatsapp,
@@ -90,7 +39,7 @@ const saveInstagramConnection = async (
   await whatsapp.update({
     status: "CONNECTED",
     session: JSON.stringify(session),
-    name: whatsapp.name || session.pageName
+    name: whatsapp.name || session.username
   });
   emitSessionUpdate(whatsapp);
 };
@@ -102,21 +51,20 @@ const getOAuthUrl = async (req: Request, res: Response): Promise<Response> => {
   if (!whatsappId)
     return res.status(400).json({ error: "whatsappId is required" });
   if (!instagramConfig.appId)
-    return res.status(500).json({ error: "FACEBOOK_APP_ID not configured" });
+    return res.status(500).json({ error: "IG_APP_ID not configured" });
 
   const state = sign({ whatsappId: Number(whatsappId) }, authConfig.secret, {
     expiresIn: "10m"
   });
   const redirectUri = buildRedirectUri();
 
-  const oauthUrl = new URL(
-    `https://www.facebook.com/${instagramConfig.graphApiVersion}/dialog/oauth`
-  );
+  const oauthUrl = new URL(instagramConfig.authorizeUrl);
   oauthUrl.searchParams.set("client_id", instagramConfig.appId);
   oauthUrl.searchParams.set("redirect_uri", redirectUri);
   oauthUrl.searchParams.set("scope", OAUTH_SCOPES);
   oauthUrl.searchParams.set("response_type", "code");
   oauthUrl.searchParams.set("state", state);
+  oauthUrl.searchParams.set("force_reauth", "true");
 
   return res.json({ url: oauthUrl.toString() });
 };
@@ -159,54 +107,44 @@ const callback = async (req: Request, res: Response): Promise<void> => {
   try {
     const redirectUri = buildRedirectUri();
 
-    const { longToken, tokenExpiresAt } = await exchangeCodeForLongLivedToken(
-      code,
-      redirectUri
+    const shortLived = await exchangeCodeForShortLivedToken(code, redirectUri);
+    const longLived = await exchangeShortForLongLivedToken(
+      shortLived.access_token
     );
-    const page = await findInstagramPage(longToken);
+    const userInfo = await getAuthenticatedUserInfo(longLived.access_token);
 
-    if (!page) {
-      res.send(
-        closePopupHtml(
-          "Nenhuma conta Instagram Business encontrada vinculada às suas Páginas do Facebook. " +
-            "Certifique-se de ter uma conta Instagram Professional vinculada a uma Página.",
-          true
-        )
-      );
-      return;
-    }
+    const tokenExpiresAt = new Date(
+      Date.now() + (longLived.expires_in || TOKEN_EXPIRY_SECONDS) * 1000
+    ).toISOString();
 
     const session: InstagramSession = {
-      pageAccessToken: page.access_token,
-      instagramAccountId: page.instagram_business_account!.id,
-      facebookPageId: page.id,
-      pageName: page.name,
+      accessToken: longLived.access_token,
+      instagramAccountId: userInfo.user_id,
+      username: userInfo.username,
+      name: userInfo.name,
       tokenExpiresAt
     };
 
-    await subscribePageWebhooks(
-      session.facebookPageId,
-      session.pageAccessToken
-    );
+    await subscribeInstagramWebhooks(session.accessToken);
     await saveInstagramConnection(whatsapp, session);
 
     logger.info({
       info: "Instagram: OAuth connected",
       whatsappId,
-      facebookPageId: session.facebookPageId,
       instagramAccountId: session.instagramAccountId,
-      pageName: session.pageName
+      username: session.username
     });
 
     res.send(
       closePopupHtml(
-        `Conta <strong>${session.pageName}</strong> conectada com sucesso!`
+        `Conta <strong>@${session.username}</strong> conectada com sucesso!`
       )
     );
   } catch (err) {
     logger.error({ info: "Instagram: OAuth callback failed", whatsappId, err });
     const message = axios.isAxiosError(err)
-      ? (err.response?.data?.error?.message as string | undefined) ||
+      ? (err.response?.data?.error_message as string | undefined) ||
+        (err.response?.data?.error?.message as string | undefined) ||
         "Falha ao conectar. Verifique as permissões e tente novamente."
       : "Falha ao conectar. Verifique as permissões e tente novamente.";
     res.send(closePopupHtml(message, true));

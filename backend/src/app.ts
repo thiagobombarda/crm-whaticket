@@ -35,7 +35,7 @@ app.post(
   express.raw({ type: "application/json" }),
   (req, _res, next) => {
     // Expose raw buffer for HMAC verification in the controller
-    (req as any).rawBody = req.body;
+    req.rawBody = req.body;
     req.body = req.body.length ? JSON.parse(req.body.toString()) : {};
     next();
   },

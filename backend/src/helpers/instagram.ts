@@ -7,10 +7,10 @@ import instagramConfig from "../config/instagram";
 // ─── Shared types ────────────────────────────────────────────────────────────
 
 export interface InstagramSession {
-  pageAccessToken: string;
+  accessToken: string;
   instagramAccountId: string;
-  facebookPageId: string;
-  pageName: string;
+  username: string;
+  name?: string;
   tokenExpiresAt?: string;
 }
 
@@ -51,11 +51,22 @@ export interface GraphApiSendResponse {
   recipient_id?: string;
 }
 
-export interface FacebookPage {
-  id: string;
-  name: string;
+export interface ShortLivedTokenResponse {
   access_token: string;
-  instagram_business_account?: { id: string };
+  user_id: string;
+  permissions?: string;
+}
+
+export interface LongLivedTokenResponse {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+}
+
+export interface InstagramUserInfo {
+  user_id: string;
+  username: string;
+  name?: string;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -86,7 +97,7 @@ export const parseInstagramSession = (
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw);
-    if (!parsed.pageAccessToken || !parsed.instagramAccountId) return null;
+    if (!parsed.accessToken || !parsed.instagramAccountId) return null;
     return parsed as InstagramSession;
   } catch {
     return null;
@@ -136,10 +147,21 @@ export const graphPost = async <T = Record<string, unknown>>(
     `${instagramConfig.graphBaseUrl}${path}`,
     data,
     {
-      headers: { Authorization: `Bearer ${token}` },
+      params: { access_token: token },
       timeout: GRAPH_TIMEOUT_MS
     }
   );
+  return res.data;
+};
+
+export const graphDelete = async <T = Record<string, unknown>>(
+  path: string,
+  token: string
+): Promise<T> => {
+  const res = await axios.delete<T>(`${instagramConfig.graphBaseUrl}${path}`, {
+    params: { access_token: token },
+    timeout: GRAPH_TIMEOUT_MS
+  });
   return res.data;
 };
 
@@ -151,49 +173,121 @@ export const isInvalidTokenError = (err: unknown): boolean => {
   );
 };
 
-// ─── Page webhook subscription helpers ──────────────────────────────────────
+// ─── OAuth token exchange (Instagram Business Login) ─────────────────────────
 
-export const subscribePageWebhooks = async (
-  pageId: string,
-  pageAccessToken: string
+/**
+ * Exchanges authorization code for a short-lived Instagram User access token.
+ * Uses api.instagram.com (form-encoded), not the Graph API.
+ */
+export const exchangeCodeForShortLivedToken = async (
+  code: string,
+  redirectUri: string
+): Promise<ShortLivedTokenResponse> => {
+  const params = new URLSearchParams();
+  params.append("client_id", instagramConfig.appId);
+  params.append("client_secret", instagramConfig.appSecret);
+  params.append("grant_type", "authorization_code");
+  params.append("redirect_uri", redirectUri);
+  params.append("code", code);
+
+  const res = await axios.post<ShortLivedTokenResponse>(
+    `${instagramConfig.apiBaseUrl}/oauth/access_token`,
+    params,
+    {
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      timeout: GRAPH_TIMEOUT_MS
+    }
+  );
+  return res.data;
+};
+
+/**
+ * Exchanges a short-lived token for a long-lived (60-day) Instagram User token.
+ */
+export const exchangeShortForLongLivedToken = async (
+  shortLivedToken: string
+): Promise<LongLivedTokenResponse> => {
+  const res = await axios.get<LongLivedTokenResponse>(
+    `${instagramConfig.graphRootUrl}/access_token`,
+    {
+      params: {
+        grant_type: "ig_exchange_token",
+        client_secret: instagramConfig.appSecret,
+        access_token: shortLivedToken
+      },
+      timeout: GRAPH_TIMEOUT_MS
+    }
+  );
+  return res.data;
+};
+
+/**
+ * Refreshes a long-lived Instagram User access token (extends another 60 days).
+ */
+export const refreshLongLivedToken = async (
+  longLivedToken: string
+): Promise<LongLivedTokenResponse> => {
+  const res = await axios.get<LongLivedTokenResponse>(
+    `${instagramConfig.graphRootUrl}/refresh_access_token`,
+    {
+      params: {
+        grant_type: "ig_refresh_token",
+        access_token: longLivedToken
+      },
+      timeout: GRAPH_TIMEOUT_MS
+    }
+  );
+  return res.data;
+};
+
+/**
+ * Fetches the authenticated Instagram Business account user_id and username.
+ */
+export const getAuthenticatedUserInfo = async (
+  accessToken: string
+): Promise<InstagramUserInfo> => {
+  const data = await graphGet<{
+    user_id?: string;
+    username?: string;
+    name?: string;
+  }>("/me", accessToken, { fields: "user_id,username,name" });
+  if (!data.user_id || !data.username) {
+    throw new Error("Instagram /me did not return user_id/username");
+  }
+  return {
+    user_id: data.user_id,
+    username: data.username,
+    name: data.name
+  };
+};
+
+// ─── Webhook subscription helpers ────────────────────────────────────────────
+
+export const subscribeInstagramWebhooks = async (
+  accessToken: string
 ): Promise<void> => {
   try {
-    await axios.post(
-      `${instagramConfig.graphBaseUrl}/${pageId}/subscribed_apps`,
-      null,
-      {
-        params: {
-          subscribed_fields: "messages,messaging_postbacks,message_reads",
-          access_token: pageAccessToken
-        },
-        timeout: GRAPH_TIMEOUT_MS
-      }
+    await graphPost(
+      "/me/subscribed_apps",
+      accessToken,
+      {} // subscribed_fields configured at app-level for IG Login
     );
   } catch (err) {
     logger.warn({
       info: "Instagram: webhook subscription failed (non-fatal)",
-      pageId,
       err: axios.isAxiosError(err) ? err.response?.data : err
     });
   }
 };
 
-export const unsubscribePageWebhooks = async (
-  pageId: string,
-  pageAccessToken: string
+export const unsubscribeInstagramWebhooks = async (
+  accessToken: string
 ): Promise<void> => {
   try {
-    await axios.delete(
-      `${instagramConfig.graphBaseUrl}/${pageId}/subscribed_apps`,
-      {
-        params: { access_token: pageAccessToken },
-        timeout: GRAPH_TIMEOUT_MS
-      }
-    );
+    await graphDelete("/me/subscribed_apps", accessToken);
   } catch (err) {
     logger.warn({
       info: "Instagram: webhook unsubscription failed (non-fatal)",
-      pageId,
       err: axios.isAxiosError(err) ? err.response?.data : err
     });
   }

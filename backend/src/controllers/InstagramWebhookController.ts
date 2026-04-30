@@ -120,14 +120,14 @@ const downloadMediaAttachment = async (
 
 const fetchContactProfile = async (
   igsid: string,
-  pageAccessToken: string
+  accessToken: string
 ): Promise<{ name: string; profilePicUrl?: string }> => {
   const fallback = { name: fromIgsid(igsid) };
   try {
     const data = await graphGet<{ name?: string; profile_pic?: string }>(
       `/${igsid}`,
-      pageAccessToken,
-      { fields: "name,profile_pic" }
+      accessToken,
+      { fields: "name,username,profile_pic" }
     );
     return {
       name: data.name || fallback.name,
@@ -164,7 +164,7 @@ const buildProviderMessage = (
 const processMessagingEvent = async (
   event: MetaMessagingEvent,
   whatsappId: number,
-  session: { instagramAccountId: string; pageAccessToken: string }
+  session: { instagramAccountId: string; accessToken: string }
 ): Promise<void> => {
   if (!event.message || event.message.is_echo) return;
 
@@ -174,7 +174,7 @@ const processMessagingEvent = async (
     : event.sender.id;
   const { name, profilePicUrl } = await fetchContactProfile(
     igsidToFetch,
-    session.pageAccessToken
+    session.accessToken
   );
 
   const contactPayload: ContactPayload = {
@@ -207,13 +207,14 @@ const processWebhookPayload = async (
   if (payload.object !== "instagram") return;
 
   for (const entry of payload.entry) {
-    const whatsappId = await instagramSessionRegistry.resolveWhatsappIdByPage(
-      entry.id
-    );
+    const whatsappId =
+      await instagramSessionRegistry.resolveWhatsappIdByInstagramAccount(
+        entry.id
+      );
     if (!whatsappId) {
       logger.warn({
-        info: "Instagram webhook: no connection for page",
-        pageId: entry.id
+        info: "Instagram webhook: no connection for instagram account",
+        instagramAccountId: entry.id
       });
       continue;
     }

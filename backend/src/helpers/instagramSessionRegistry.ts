@@ -2,7 +2,7 @@ import Whatsapp from "../models/Whatsapp";
 import {
   InstagramSession,
   parseInstagramSession,
-  unsubscribePageWebhooks,
+  unsubscribeInstagramWebhooks,
   emitSessionUpdate
 } from "./instagram";
 
@@ -10,17 +10,21 @@ import {
 
 class InstagramSessionRegistry {
   private sessionsByWhatsappId = new Map<number, InstagramSession>();
-  private whatsappIdByPageId = new Map<string, number>();
+
+  private whatsappIdByInstagramAccountId = new Map<string, number>();
 
   load(whatsappId: number, session: InstagramSession): void {
     this.sessionsByWhatsappId.set(whatsappId, session);
-    this.whatsappIdByPageId.set(session.facebookPageId, whatsappId);
+    this.whatsappIdByInstagramAccountId.set(
+      session.instagramAccountId,
+      whatsappId
+    );
   }
 
   remove(whatsappId: number): void {
     const session = this.sessionsByWhatsappId.get(whatsappId);
     if (session) {
-      this.whatsappIdByPageId.delete(session.facebookPageId);
+      this.whatsappIdByInstagramAccountId.delete(session.instagramAccountId);
     }
     this.sessionsByWhatsappId.delete(whatsappId);
   }
@@ -29,10 +33,10 @@ class InstagramSessionRegistry {
     return this.sessionsByWhatsappId.get(whatsappId);
   }
 
-  async resolveWhatsappIdByPage(
-    facebookPageId: string
+  async resolveWhatsappIdByInstagramAccount(
+    instagramAccountId: string
   ): Promise<number | null> {
-    const cached = this.whatsappIdByPageId.get(facebookPageId);
+    const cached = this.whatsappIdByInstagramAccountId.get(instagramAccountId);
     if (cached !== undefined) return cached;
 
     const connections = await Whatsapp.findAll({
@@ -46,7 +50,7 @@ class InstagramSessionRegistry {
       }
     }
 
-    return this.whatsappIdByPageId.get(facebookPageId) ?? null;
+    return this.whatsappIdByInstagramAccountId.get(instagramAccountId) ?? null;
   }
 }
 
@@ -59,10 +63,7 @@ export const disconnectInstagramConnection = async (
 ): Promise<void> => {
   const session = parseInstagramSession(whatsapp.session);
   if (session) {
-    await unsubscribePageWebhooks(
-      session.facebookPageId,
-      session.pageAccessToken
-    );
+    await unsubscribeInstagramWebhooks(session.accessToken);
   }
   instagramSessionRegistry.remove(whatsapp.id);
   await whatsapp.update({ status: "WAITING_LOGIN", session: "" });

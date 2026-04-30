@@ -2,13 +2,11 @@ import axios from "axios";
 import { basename } from "node:path";
 import Whatsapp from "../../../models/Whatsapp";
 import { logger } from "../../../utils/logger";
-import instagramConfig from "../../../config/instagram";
 import {
   InstagramSession,
   GraphApiSendResponse,
   TOKEN_EXPIRY_SECONDS,
   TOKEN_REFRESH_THRESHOLD_MS,
-  GRAPH_TIMEOUT_MS,
   emitSessionUpdate,
   getPublicBaseUrl,
   parseInstagramSession,
@@ -16,7 +14,8 @@ import {
   fromIgsid,
   graphGet,
   graphPost,
-  isInvalidTokenError
+  isInvalidTokenError,
+  refreshLongLivedToken
 } from "../../../helpers/instagram";
 import {
   instagramSessionRegistry,
@@ -60,10 +59,10 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
   }
 
   try {
-    await graphGet<{ id: string; name: string }>(
+    await graphGet<{ user_id: string; username: string }>(
       "/me",
-      session.pageAccessToken,
-      { fields: "id,name" }
+      session.accessToken,
+      { fields: "user_id,username" }
     );
     instagramSessionRegistry.load(whatsapp.id, session);
     await whatsapp.update({ status: "CONNECTED" });
@@ -71,7 +70,7 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
     logger.info({
       info: "Instagram: session restored",
       whatsappId: whatsapp.id,
-      page: session.pageName
+      username: session.username
     });
   } catch (err) {
     const errCode = axios.isAxiosError(err)
@@ -113,8 +112,8 @@ const sendMessage = async (
   if (!s) throw new AppError("ERR_INSTAGRAM_SESSION_NOT_FOUND", 404);
 
   const result = await graphPost<GraphApiSendResponse>(
-    `/${s.instagramAccountId}/messages`,
-    s.pageAccessToken,
+    "/me/messages",
+    s.accessToken,
     { recipient: { id: toIgsid(to) }, message: { text: body } }
   );
 
@@ -147,27 +146,19 @@ const sendMedia = async (
     : null;
 
   const result = await (mediaUrl
-    ? graphPost<GraphApiSendResponse>(
-        `/${s.instagramAccountId}/messages`,
-        s.pageAccessToken,
-        {
-          recipient: { id: toIgsid(to) },
-          message: {
-            attachment: {
-              type: attachmentType,
-              payload: { url: mediaUrl, is_reusable: false }
-            }
+    ? graphPost<GraphApiSendResponse>("/me/messages", s.accessToken, {
+        recipient: { id: toIgsid(to) },
+        message: {
+          attachment: {
+            type: attachmentType,
+            payload: { url: mediaUrl, is_reusable: false }
           }
         }
-      )
-    : graphPost<GraphApiSendResponse>(
-        `/${s.instagramAccountId}/messages`,
-        s.pageAccessToken,
-        {
-          recipient: { id: toIgsid(to) },
-          message: { text: options?.caption || media.filename }
-        }
-      ));
+      })
+    : graphPost<GraphApiSendResponse>("/me/messages", s.accessToken, {
+        recipient: { id: toIgsid(to) },
+        message: { text: options?.caption || media.filename }
+      }));
 
   return {
     id: extractMessageId(result),
@@ -191,7 +182,7 @@ const getProfilePicUrl = async (
   try {
     const data = await graphGet<{ profile_pic?: string }>(
       `/${toIgsid(number)}`,
-      s.pageAccessToken,
+      s.accessToken,
       { fields: "profile_pic" }
     );
     return data.profile_pic || "";
@@ -234,26 +225,15 @@ const refreshOneToken = async (conn: Whatsapp): Promise<void> => {
   if (expiresAt - Date.now() > TOKEN_REFRESH_THRESHOLD_MS) return;
 
   try {
-    const data = await axios.get<{ access_token: string; expires_in?: number }>(
-      `${instagramConfig.graphBaseUrl}/oauth/access_token`,
-      {
-        params: {
-          grant_type: "fb_exchange_token",
-          client_id: instagramConfig.appId,
-          client_secret: instagramConfig.appSecret,
-          fb_exchange_token: session.pageAccessToken
-        },
-        timeout: GRAPH_TIMEOUT_MS
-      }
-    );
+    const data = await refreshLongLivedToken(session.accessToken);
 
     const newExpiry = new Date(
-      Date.now() + (data.data.expires_in || TOKEN_EXPIRY_SECONDS) * 1000
+      Date.now() + (data.expires_in || TOKEN_EXPIRY_SECONDS) * 1000
     ).toISOString();
 
     const updated: InstagramSession = {
       ...session,
-      pageAccessToken: data.data.access_token,
+      accessToken: data.access_token,
       tokenExpiresAt: newExpiry
     };
 
@@ -262,7 +242,7 @@ const refreshOneToken = async (conn: Whatsapp): Promise<void> => {
     logger.info({
       info: "Instagram: token refreshed",
       whatsappId: conn.id,
-      page: session.pageName
+      username: session.username
     });
   } catch (err) {
     logger.error({
