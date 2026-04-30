@@ -8,6 +8,7 @@ import {
 } from "./types";
 import { BaileysProvider } from "./Implementations/baileys";
 import { InstagramProvider } from "./Implementations/instagram";
+import { WhatsAppCloudProvider } from "./Implementations/whatsappCloud";
 
 export interface WhatsappProvider {
   init(whatsapp: Whatsapp): Promise<void>;
@@ -44,6 +45,7 @@ export interface WhatsappProvider {
 
 export function getProvider(channel: string): WhatsappProvider {
   if (channel === "instagram") return InstagramProvider;
+  if (channel === "whatsapp_cloud") return WhatsAppCloudProvider;
   return BaileysProvider;
 }
 

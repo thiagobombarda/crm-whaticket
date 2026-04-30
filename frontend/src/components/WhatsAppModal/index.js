@@ -194,6 +194,10 @@ const useStyles = makeStyles(() => ({
 	channelBtnInstagram: {
 		color: "#e6683c",
 	},
+
+	channelBtnCloud: {
+		color: "#128C7E",
+	},
 }));
 
 const SessionSchema = Yup.object().shape({
@@ -306,6 +310,13 @@ const WhatsAppModal = ({ open, onClose, whatsAppId }) => {
 											onClick={() => setChannel("instagram")}
 										>
 											📸 Instagram
+										</button>
+										<button
+											type="button"
+											className={`${classes.channelBtn} ${channel === "whatsapp_cloud" ? `${classes.channelBtnActive} ${classes.channelBtnCloud}` : ""}`}
+											onClick={() => setChannel("whatsapp_cloud")}
+										>
+											☁️ WA Cloud
 										</button>
 									</div>
 								</div>

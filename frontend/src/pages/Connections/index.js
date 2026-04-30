@@ -18,6 +18,7 @@ import WhatsAppModal from "../../components/WhatsAppModal";
 import ConfirmationModal from "../../components/ConfirmationModal";
 import QrcodeModal from "../../components/QrcodeModal";
 import InstagramLoginModal from "../../components/InstagramLoginModal";
+import WhatsAppCloudConnectModal from "../../components/WhatsAppCloudConnectModal";
 import TableRowSkeleton from "../../components/TableRowSkeleton";
 import { i18n } from "../../translate/i18n";
 import { WhatsAppsContext } from "../../context/WhatsApp/WhatsAppsContext";
@@ -202,6 +203,11 @@ const useStyles = makeStyles((theme) => ({
     color: "#cc2366",
   },
 
+  channelBadgeCloud: {
+    background: "rgba(18,140,126,0.1)",
+    color: "#128C7E",
+  },
+
   cardMeta: {
     fontFamily: '"DM Sans", system-ui, sans-serif',
     fontSize: 12,
@@ -327,6 +333,7 @@ const Connections = () => {
   const [whatsAppModalOpen, setWhatsAppModalOpen] = useState(false);
   const [qrModalOpen, setQrModalOpen] = useState(false);
   const [igLoginModalOpen, setIgLoginModalOpen] = useState(false);
+  const [wacConnectModalOpen, setWacConnectModalOpen] = useState(false);
   const [selectedWhatsApp, setSelectedWhatsApp] = useState(null);
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
   const confirmationModalInitialState = { action: "", title: "", message: "", whatsAppId: "", open: false };
@@ -349,6 +356,8 @@ const Connections = () => {
   const handleEditWhatsApp = (whatsApp) => { setSelectedWhatsApp(whatsApp); setWhatsAppModalOpen(true); };
   const handleOpenIgLogin = (whatsApp) => { setSelectedWhatsApp(whatsApp); setIgLoginModalOpen(true); };
   const handleCloseIgLogin = useCallback(() => { setSelectedWhatsApp(null); setIgLoginModalOpen(false); }, []);
+  const handleOpenWacConnect = (whatsApp) => { setSelectedWhatsApp(whatsApp); setWacConnectModalOpen(true); };
+  const handleCloseWacConnect = useCallback(() => { setSelectedWhatsApp(null); setWacConnectModalOpen(false); }, []);
 
   const handleOpenConfirmationModal = (action, whatsAppId) => {
     setConfirmModalInfo(
@@ -365,6 +374,8 @@ const Connections = () => {
         const wa = whatsApps.find(w => w.id === confirmModalInfo.whatsAppId);
         if (wa?.channel === "instagram") {
           await api.post("/instagram/oauth/disconnect", { whatsappId: confirmModalInfo.whatsAppId });
+        } else if (wa?.channel === "whatsapp_cloud") {
+          await api.post("/whatsapp-cloud/disconnect", { whatsappId: confirmModalInfo.whatsAppId });
         } else {
           await api.delete(`/whatsappsession/${confirmModalInfo.whatsAppId}`);
         }
@@ -376,16 +387,18 @@ const Connections = () => {
 
   const renderSessionButtons = (whatsApp) => {
     const isInstagram = whatsApp.channel === "instagram";
+    const isCloud = whatsApp.channel === "whatsapp_cloud";
+    const isBaileys = !isInstagram && !isCloud;
 
     return (
       <div className={classes.sessionBtns}>
-        {/* WhatsApp-specific buttons */}
-        {!isInstagram && whatsApp.status === "qrcode" && (
+        {/* Baileys-specific buttons */}
+        {isBaileys && whatsApp.status === "qrcode" && (
           <Button size="small" variant="contained" color="primary" className={classes.smBtn} onClick={() => handleOpenQrModal(whatsApp)}>
             {i18n.t("connections.buttons.qrcode")}
           </Button>
         )}
-        {!isInstagram && whatsApp.status === "DISCONNECTED" && (
+        {isBaileys && whatsApp.status === "DISCONNECTED" && (
           <>
             <Button size="small" variant="outlined" color="primary" className={classes.smBtn} onClick={() => handleStartWhatsAppSession(whatsApp.id)}>
               {i18n.t("connections.buttons.tryAgain")}
@@ -406,6 +419,19 @@ const Connections = () => {
             onClick={() => handleOpenIgLogin(whatsApp)}
           >
             Conectar Instagram
+          </Button>
+        )}
+
+        {/* WhatsApp Cloud-specific buttons */}
+        {isCloud && (whatsApp.status === "WAITING_LOGIN" || whatsApp.status === "DISCONNECTED") && (
+          <Button
+            size="small"
+            variant="contained"
+            className={classes.smBtn}
+            style={{ background: "linear-gradient(135deg, #25D366, #128C7E)", color: "#fff", border: "none" }}
+            onClick={() => handleOpenWacConnect(whatsApp)}
+          >
+            Configurar
           </Button>
         )}
 
@@ -433,6 +459,7 @@ const Connections = () => {
       <QrcodeModal open={qrModalOpen} onClose={handleCloseQrModal} whatsAppId={!whatsAppModalOpen && selectedWhatsApp?.id} />
       <WhatsAppModal open={whatsAppModalOpen} onClose={handleCloseWhatsAppModal} whatsAppId={!qrModalOpen && selectedWhatsApp?.id} />
       <InstagramLoginModal open={igLoginModalOpen} onClose={handleCloseIgLogin} whatsAppId={selectedWhatsApp?.id} />
+      <WhatsAppCloudConnectModal open={wacConnectModalOpen} onClose={handleCloseWacConnect} whatsAppId={selectedWhatsApp?.id} />
 
       <div className={classes.pageHeader}>
         <h1 className={classes.pageTitle}>{i18n.t("connections.title")}</h1>
@@ -464,8 +491,18 @@ const Connections = () => {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <p className={classes.cardName}>{whatsApp.name}</p>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
-                    <span className={`${classes.channelBadge} ${whatsApp.channel === "instagram" ? classes.channelBadgeInstagram : classes.channelBadgeWhatsapp}`}>
-                      {whatsApp.channel === "instagram" ? "📸 Instagram" : "📱 WhatsApp"}
+                    <span className={`${classes.channelBadge} ${
+                      whatsApp.channel === "instagram"
+                        ? classes.channelBadgeInstagram
+                        : whatsApp.channel === "whatsapp_cloud"
+                        ? classes.channelBadgeCloud
+                        : classes.channelBadgeWhatsapp
+                    }`}>
+                      {whatsApp.channel === "instagram"
+                        ? "📸 Instagram"
+                        : whatsApp.channel === "whatsapp_cloud"
+                        ? "☁️ WA Cloud"
+                        : "📱 WhatsApp"}
                     </span>
                     {whatsApp.isDefault && whatsApp.channel !== "instagram" && (
                       <span className={classes.defaultBadge}>

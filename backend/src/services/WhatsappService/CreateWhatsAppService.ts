@@ -28,9 +28,12 @@ const CreateWhatsAppService = async ({
   isDefault = false,
   channel = "whatsapp"
 }: Request): Promise<Response> => {
-  // Instagram waits for user login, so initial status is WAITING_LOGIN
+  // Instagram and WhatsApp Cloud wait for manual configuration, so initial status is WAITING_LOGIN
   if (!status) {
-    status = channel === "instagram" ? "WAITING_LOGIN" : "OPENING";
+    status =
+      channel === "instagram" || channel === "whatsapp_cloud"
+        ? "WAITING_LOGIN"
+        : "OPENING";
   }
   const schema = Yup.object().shape({
     name: Yup.string()
