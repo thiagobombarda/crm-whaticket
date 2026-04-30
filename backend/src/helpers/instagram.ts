@@ -268,7 +268,17 @@ export const subscribeInstagramWebhooks = async (
   accessToken: string
 ): Promise<void> => {
   try {
-    await graphPost("/me/subscribed_apps", accessToken, {});
+    await axios.post(
+      `${instagramConfig.graphBaseUrl}/me/subscribed_apps`,
+      null,
+      {
+        params: {
+          access_token: accessToken,
+          subscribed_fields: "messages,messaging_postbacks,message_reactions"
+        },
+        timeout: GRAPH_TIMEOUT_MS
+      }
+    );
   } catch (err) {
     const errorData = axios.isAxiosError(err) ? err.response?.data : err;
     logger.error({
