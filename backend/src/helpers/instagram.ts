@@ -78,8 +78,8 @@ export const TOKEN_REFRESH_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 export const TOKEN_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000; // 1 day
 
 // Meta Graph API error codes that indicate an invalid/expired token
-export const META_ERROR_INVALID_TOKEN = 190;
-export const META_ERROR_SESSION_EXPIRED = 102;
+const META_ERROR_INVALID_TOKEN = 190;
+const META_ERROR_SESSION_EXPIRED = 102;
 
 export const GRAPH_TIMEOUT_MS = 10_000;
 

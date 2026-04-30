@@ -145,20 +145,19 @@ const sendMedia = async (
     ? `${getPublicBaseUrl()}/public/${filename}`
     : null;
 
-  const result = await (mediaUrl
-    ? graphPost<GraphApiSendResponse>("/me/messages", s.accessToken, {
-        recipient: { id: toIgsid(to) },
-        message: {
-          attachment: {
-            type: attachmentType,
-            payload: { url: mediaUrl, is_reusable: false }
-          }
+  const message = mediaUrl
+    ? {
+        attachment: {
+          type: attachmentType,
+          payload: { url: mediaUrl, is_reusable: false }
         }
-      })
-    : graphPost<GraphApiSendResponse>("/me/messages", s.accessToken, {
-        recipient: { id: toIgsid(to) },
-        message: { text: options?.caption || media.filename }
-      }));
+      }
+    : { text: options?.caption || media.filename };
+
+  const result = await graphPost<GraphApiSendResponse>("/me/messages", s.accessToken, {
+    recipient: { id: toIgsid(to) },
+    message
+  });
 
   return {
     id: extractMessageId(result),

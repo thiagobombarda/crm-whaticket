@@ -15,6 +15,7 @@ import {
   exchangeShortForLongLivedToken,
   getAuthenticatedUserInfo,
   subscribeInstagramWebhooks,
+  parseInstagramSession,
   graphGet
 } from "../helpers/instagram";
 import { disconnectInstagramConnection } from "../helpers/instagramSessionRegistry";
@@ -45,16 +46,23 @@ const saveInstagramConnection = async (
   emitSessionUpdate(whatsapp);
 };
 
+const requireWhatsappId = (raw: unknown, res: Response): number | null => {
+  if (!raw) {
+    res.status(400).json({ error: "whatsappId is required" });
+    return null;
+  }
+  return Number(raw);
+};
+
 // ─── GET /instagram/oauth/url ────────────────────────────────────────────────
 
 const getOAuthUrl = async (req: Request, res: Response): Promise<Response> => {
-  const { whatsappId } = req.query;
-  if (!whatsappId)
-    return res.status(400).json({ error: "whatsappId is required" });
+  const id = requireWhatsappId(req.query.whatsappId, res);
+  if (id === null) return res;
   if (!instagramConfig.appId)
     return res.status(500).json({ error: "IG_APP_ID not configured" });
 
-  const state = sign({ whatsappId: Number(whatsappId) }, authConfig.secret, {
+  const state = sign({ whatsappId: id }, authConfig.secret, {
     expiresIn: "10m"
   });
   const redirectUri = buildRedirectUri();
@@ -155,12 +163,12 @@ const callback = async (req: Request, res: Response): Promise<void> => {
 // ─── POST /instagram/oauth/disconnect ───────────────────────────────────────
 
 const disconnect = async (req: Request, res: Response): Promise<Response> => {
-  const { whatsappId } = req.body;
-  if (!whatsappId)
-    return res.status(400).json({ error: "whatsappId is required" });
+  const id = requireWhatsappId(req.body.whatsappId, res);
+  if (id === null) return res;
 
-  const whatsapp = await Whatsapp.findByPk(whatsappId);
-  if (!whatsapp) return res.status(404).json({ error: "Connection not found" });
+  const whatsapp = await Whatsapp.findByPk(id);
+  if (!whatsapp || whatsapp.channel !== "instagram")
+    return res.status(404).json({ error: "Connection not found" });
 
   await disconnectInstagramConnection(whatsapp);
 
@@ -170,24 +178,14 @@ const disconnect = async (req: Request, res: Response): Promise<Response> => {
 // ─── GET /instagram/oauth/diagnose ──────────────────────────────────────────
 
 const diagnose = async (req: Request, res: Response): Promise<Response> => {
-  const { whatsappId } = req.query;
-  if (!whatsappId)
-    return res.status(400).json({ error: "whatsappId is required" });
+  const id = requireWhatsappId(req.query.whatsappId, res);
+  if (id === null) return res;
 
-  const whatsapp = await Whatsapp.findByPk(Number(whatsappId));
+  const whatsapp = await Whatsapp.findByPk(id);
   if (!whatsapp || whatsapp.channel !== "instagram")
     return res.status(404).json({ error: "Connection not found" });
 
-  const session = (() => {
-    try {
-      const p = JSON.parse(whatsapp.session || "{}");
-      if (!p.accessToken || !p.instagramAccountId) return null;
-      return p as InstagramSession;
-    } catch {
-      return null;
-    }
-  })();
-
+  const session = parseInstagramSession(whatsapp.session);
   if (!session)
     return res.status(400).json({ error: "No valid session stored" });
 
@@ -228,31 +226,21 @@ const diagnose = async (req: Request, res: Response): Promise<Response> => {
 // ─── POST /instagram/oauth/resubscribe ──────────────────────────────────────
 
 const resubscribe = async (req: Request, res: Response): Promise<Response> => {
-  const { whatsappId } = req.body;
-  if (!whatsappId)
-    return res.status(400).json({ error: "whatsappId is required" });
+  const id = requireWhatsappId(req.body.whatsappId, res);
+  if (id === null) return res;
 
-  const whatsapp = await Whatsapp.findByPk(Number(whatsappId));
+  const whatsapp = await Whatsapp.findByPk(id);
   if (!whatsapp || whatsapp.channel !== "instagram")
     return res.status(404).json({ error: "Connection not found" });
 
-  const session = (() => {
-    try {
-      const p = JSON.parse(whatsapp.session || "{}");
-      if (!p.accessToken) return null;
-      return p as InstagramSession;
-    } catch {
-      return null;
-    }
-  })();
-
+  const session = parseInstagramSession(whatsapp.session);
   if (!session)
     return res.status(400).json({ error: "No valid session stored" });
 
   await subscribeInstagramWebhooks(session.accessToken);
   logger.info({
     info: "Instagram: webhook re-subscribed",
-    whatsappId: Number(whatsappId)
+    whatsappId: id
   });
   return res.json({ ok: true });
 };

@@ -24,11 +24,7 @@ import type { ProviderMessage } from "../providers/WhatsApp/types";
 const ATTACHMENT_TYPE_MAP: Record<string, ProviderMessage["type"]> = {
   image: "image",
   video: "video",
-  audio: "audio",
-  file: "document",
-  share: "document",
-  template: "document",
-  fallback: "document"
+  audio: "audio"
 };
 
 const mapAttachmentType = (type: string): ProviderMessage["type"] =>
