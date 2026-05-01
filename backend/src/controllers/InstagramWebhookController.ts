@@ -1,4 +1,3 @@
-import crypto from "crypto";
 import { Request, Response } from "express";
 import axios from "axios";
 import { handleMessage } from "../handlers/handleWhatsappEvents";
@@ -12,7 +11,11 @@ import {
   graphGet,
   GRAPH_TIMEOUT_MS
 } from "../helpers/instagram";
-import { instagramSessionRegistry } from "../helpers/instagramSessionRegistry";
+import {
+  instagramSessionRegistry,
+  resolveWhatsappIdByInstagramAccount
+} from "../helpers/instagramSessionRegistry";
+import { verifyMetaSignature } from "../helpers/metaWebhookSignature";
 import type {
   ContactPayload,
   MediaPayload
@@ -66,29 +69,8 @@ const receive = (req: Request, res: Response): void => {
 
 // ─── Signature verification ──────────────────────────────────────────────────
 
-const verifySignature = (req: Request): boolean => {
-  if (!instagramConfig.appSecret) {
-    // Development mode: skip verification when secret is not configured
-    return true;
-  }
-
-  const signature = req.headers["x-hub-signature-256"] as string | undefined;
-  if (!signature) return false;
-
-  const rawBody = req.rawBody;
-  if (!rawBody) return false;
-
-  const expectedHex = `sha256=${crypto
-    .createHmac("sha256", instagramConfig.appSecret)
-    .update(rawBody)
-    .digest("hex")}`;
-
-  const expected = Buffer.from(expectedHex);
-  const actual = Buffer.from(signature);
-
-  if (expected.length !== actual.length) return false;
-  return crypto.timingSafeEqual(expected, actual);
-};
+const verifySignature = (req: Request): boolean =>
+  verifyMetaSignature(req, instagramConfig.appSecret);
 
 // ─── Attachment helpers ───────────────────────────────────────────────────────
 
@@ -206,10 +188,7 @@ const processWebhookPayload = async (
   if (payload.object !== "instagram") return;
 
   for (const entry of payload.entry) {
-    const whatsappId =
-      await instagramSessionRegistry.resolveWhatsappIdByInstagramAccount(
-        entry.id
-      );
+    const whatsappId = await resolveWhatsappIdByInstagramAccount(entry.id);
     if (!whatsappId) {
       logger.warn({
         info: "Instagram webhook: no connection for instagram account",

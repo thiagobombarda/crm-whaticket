@@ -8,7 +8,10 @@ import {
   verifyWACSignature,
   downloadWACMedia
 } from "../helpers/whatsappCloud";
-import { whatsappCloudSessionRegistry } from "../helpers/whatsappCloudSessionRegistry";
+import {
+  whatsappCloudSessionRegistry,
+  resolveWhatsappIdByPhoneNumberId
+} from "../helpers/whatsappCloudSessionRegistry";
 import type {
   ContactPayload,
   MediaPayload
@@ -134,10 +137,7 @@ const processWebhookPayload = async (
       if (!messages?.length) continue;
 
       const { phone_number_id } = metadata;
-      const whatsappId =
-        await whatsappCloudSessionRegistry.resolveWhatsappIdByPhoneNumberId(
-          phone_number_id
-        );
+      const whatsappId = await resolveWhatsappIdByPhoneNumberId(phone_number_id);
 
       if (!whatsappId) {
         logger.warn({

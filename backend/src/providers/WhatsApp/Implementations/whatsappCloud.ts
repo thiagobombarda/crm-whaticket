@@ -12,7 +12,7 @@ import {
   whatsappCloudSessionRegistry,
   disconnectWhatsAppCloudConnection
 } from "../../../helpers/whatsappCloudSessionRegistry";
-import { getIO } from "../../../libs/socket";
+import { emitWhatsappSessionUpdate as emitSessionUpdate } from "../../../helpers/emitWhatsappSessionUpdate";
 import type { WhatsappProvider } from "../whatsappProvider";
 import type {
   ProviderMessage,
@@ -21,14 +21,6 @@ import type {
   SendMessageOptions,
   SendMediaOptions
 } from "../types";
-
-const emitSessionUpdate = (whatsapp: Whatsapp): void => {
-  const io = getIO();
-  io.to("notification").emit("whatsappSession", {
-    action: "update",
-    session: whatsapp
-  });
-};
 
 const MEDIA_TYPE_MAP: Record<string, string> = {
   "image/": "image",
@@ -54,15 +46,18 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
     return;
   }
 
+  whatsappCloudSessionRegistry.load(whatsapp.id, session);
+
   try {
     await graphGet<{ id: string }>(
       `/${session.phoneNumberId}`,
       session.accessToken,
       { fields: "id,display_phone_number,verified_name" }
     );
-    whatsappCloudSessionRegistry.load(whatsapp.id, session);
-    await whatsapp.update({ status: "CONNECTED" });
-    emitSessionUpdate(whatsapp);
+    if (whatsapp.status !== "CONNECTED") {
+      await whatsapp.update({ status: "CONNECTED" });
+      emitSessionUpdate(whatsapp);
+    }
     logger.info({
       info: "WhatsApp Cloud: session restored",
       whatsappId: whatsapp.id,
@@ -70,12 +65,10 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
     });
   } catch (err) {
     logger.warn({
-      info: "WhatsApp Cloud: token validation failed on init",
+      info: "WhatsApp Cloud: token validation failed on init, keeping registry",
       whatsappId: whatsapp.id,
       err
     });
-    await whatsapp.update({ status: "DISCONNECTED" });
-    emitSessionUpdate(whatsapp);
   }
 };
 

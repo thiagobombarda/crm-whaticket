@@ -8,6 +8,6 @@ export function buildChatId(
   number: string,
   isGroup: boolean
 ): string {
-  if (channel === "instagram") return number;
+  if (channel === "instagram" || channel === "whatsapp_cloud") return number;
   return `${number}@${isGroup ? "g" : "c"}.us`;
 }

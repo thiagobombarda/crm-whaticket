@@ -5,56 +5,28 @@ import {
   unsubscribeInstagramWebhooks,
   emitSessionUpdate
 } from "./instagram";
+import { MetaSessionRegistry } from "./metaSessionRegistry";
 
 // ─── Registry ────────────────────────────────────────────────────────────────
 
-class InstagramSessionRegistry {
-  private sessionsByWhatsappId = new Map<number, InstagramSession>();
-
-  private whatsappIdByInstagramAccountId = new Map<string, number>();
-
-  load(whatsappId: number, session: InstagramSession): void {
-    this.sessionsByWhatsappId.set(whatsappId, session);
-    this.whatsappIdByInstagramAccountId.set(
-      session.instagramAccountId,
-      whatsappId
-    );
-  }
-
-  remove(whatsappId: number): void {
-    const session = this.sessionsByWhatsappId.get(whatsappId);
-    if (session) {
-      this.whatsappIdByInstagramAccountId.delete(session.instagramAccountId);
+export const instagramSessionRegistry =
+  new MetaSessionRegistry<InstagramSession>(
+    s => s.instagramAccountId,
+    async () => {
+      const conns = await Whatsapp.findAll({
+        where: { channel: "instagram", status: "CONNECTED" }
+      });
+      return conns
+        .map(c => ({ id: c.id, session: parseInstagramSession(c.session) }))
+        .filter(
+          (r): r is { id: number; session: InstagramSession } =>
+            r.session !== null
+        );
     }
-    this.sessionsByWhatsappId.delete(whatsappId);
-  }
+  );
 
-  getByWhatsappId(whatsappId: number): InstagramSession | undefined {
-    return this.sessionsByWhatsappId.get(whatsappId);
-  }
-
-  async resolveWhatsappIdByInstagramAccount(
-    instagramAccountId: string
-  ): Promise<number | null> {
-    const cached = this.whatsappIdByInstagramAccountId.get(instagramAccountId);
-    if (cached !== undefined) return cached;
-
-    const connections = await Whatsapp.findAll({
-      where: { channel: "instagram", status: "CONNECTED" }
-    });
-
-    for (const conn of connections) {
-      const session = parseInstagramSession(conn.session);
-      if (session) {
-        this.load(conn.id, session);
-      }
-    }
-
-    return this.whatsappIdByInstagramAccountId.get(instagramAccountId) ?? null;
-  }
-}
-
-export const instagramSessionRegistry = new InstagramSessionRegistry();
+export const resolveWhatsappIdByInstagramAccount = (instagramAccountId: string) =>
+  instagramSessionRegistry.resolveBySecondaryKey(instagramAccountId);
 
 // ─── Disconnect helper (unsubscribe + cleanup + DB update + socket emit) ─────
 

@@ -10,7 +10,7 @@ import {
   whatsappCloudSessionRegistry,
   disconnectWhatsAppCloudConnection
 } from "../helpers/whatsappCloudSessionRegistry";
-import { getIO } from "../libs/socket";
+import { emitWhatsappSessionUpdate } from "../helpers/emitWhatsappSessionUpdate";
 
 // ─── POST /whatsapp-cloud/connect ────────────────────────────────────────────
 
@@ -59,12 +59,7 @@ const connect = async (req: Request, res: Response): Promise<Response> => {
   });
 
   whatsappCloudSessionRegistry.load(whatsapp.id, session);
-
-  const io = getIO();
-  io.to("notification").emit("whatsappSession", {
-    action: "update",
-    session: whatsapp
-  });
+  emitWhatsappSessionUpdate(whatsapp);
 
   logger.info({
     info: "WhatsApp Cloud: connected",

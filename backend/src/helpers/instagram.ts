@@ -1,8 +1,14 @@
 import axios from "axios";
 import Whatsapp from "../models/Whatsapp";
-import { getIO } from "../libs/socket";
 import { logger } from "../utils/logger";
 import instagramConfig from "../config/instagram";
+import { emitWhatsappSessionUpdate } from "./emitWhatsappSessionUpdate";
+import {
+  metaGraphGet,
+  metaGraphPost,
+  metaGraphDelete,
+  GRAPH_TIMEOUT_MS as META_GRAPH_TIMEOUT_MS
+} from "./metaGraph";
 import AppError from "../errors/AppError";
 
 // ─── Shared types ────────────────────────────────────────────────────────────
@@ -81,7 +87,7 @@ export const TOKEN_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000; // 1 day
 const META_ERROR_INVALID_TOKEN = 190;
 const META_ERROR_SESSION_EXPIRED = 102;
 
-export const GRAPH_TIMEOUT_MS = 10_000;
+export const GRAPH_TIMEOUT_MS = META_GRAPH_TIMEOUT_MS;
 
 const IG_PREFIX_REGEX = /^ig_/;
 
@@ -105,13 +111,7 @@ export const parseInstagramSession = (
   }
 };
 
-export const emitSessionUpdate = (whatsapp: Whatsapp): void => {
-  const io = getIO();
-  io.to("notification").emit("whatsappSession", {
-    action: "update",
-    session: whatsapp
-  });
-};
+export const emitSessionUpdate = emitWhatsappSessionUpdate;
 
 export const getPublicBaseUrl = (): string => {
   const backendUrl = process.env.BACKEND_URL || "http://localhost:8080";
@@ -127,44 +127,25 @@ export const getPublicBaseUrl = (): string => {
 
 // ─── Graph API wrappers ──────────────────────────────────────────────────────
 
-export const graphGet = async <T = Record<string, unknown>>(
+const igAuth = (token: string) =>
+  ({ mode: "query", baseUrl: instagramConfig.graphBaseUrl, token } as const);
+
+export const graphGet = <T = Record<string, unknown>>(
   path: string,
   token: string,
   params?: Record<string, string>
-): Promise<T> => {
-  const res = await axios.get<T>(`${instagramConfig.graphBaseUrl}${path}`, {
-    params: { access_token: token, ...params },
-    timeout: GRAPH_TIMEOUT_MS
-  });
-  return res.data;
-};
+): Promise<T> => metaGraphGet<T>(path, igAuth(token), params);
 
-export const graphPost = async <T = Record<string, unknown>>(
+export const graphPost = <T = Record<string, unknown>>(
   path: string,
   token: string,
   data: object
-): Promise<T> => {
-  const res = await axios.post<T>(
-    `${instagramConfig.graphBaseUrl}${path}`,
-    data,
-    {
-      params: { access_token: token },
-      timeout: GRAPH_TIMEOUT_MS
-    }
-  );
-  return res.data;
-};
+): Promise<T> => metaGraphPost<T>(path, igAuth(token), data);
 
-export const graphDelete = async <T = Record<string, unknown>>(
+export const graphDelete = <T = Record<string, unknown>>(
   path: string,
   token: string
-): Promise<T> => {
-  const res = await axios.delete<T>(`${instagramConfig.graphBaseUrl}${path}`, {
-    params: { access_token: token },
-    timeout: GRAPH_TIMEOUT_MS
-  });
-  return res.data;
-};
+): Promise<T> => metaGraphDelete<T>(path, igAuth(token));
 
 export const isInvalidTokenError = (err: unknown): boolean => {
   if (!axios.isAxiosError(err)) return false;

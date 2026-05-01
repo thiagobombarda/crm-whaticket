@@ -1,9 +1,8 @@
 import axios from "axios";
-import crypto from "crypto";
 import { Request } from "express";
 import whatsappCloudConfig from "../config/whatsappCloud";
-
-const GRAPH_TIMEOUT_MS = 10_000;
+import { metaGraphGet, metaGraphPost } from "./metaGraph";
+import { verifyMetaSignature } from "./metaWebhookSignature";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -81,51 +80,23 @@ export const parseWhatsAppCloudSession = (
   }
 };
 
-export const graphGet = async <T = Record<string, unknown>>(
+const wacAuth = (token: string) =>
+  ({ mode: "header", baseUrl: whatsappCloudConfig.graphBaseUrl, token } as const);
+
+export const graphGet = <T = Record<string, unknown>>(
   path: string,
   token: string,
   params?: Record<string, string>
-): Promise<T> => {
-  const res = await axios.get<T>(
-    `${whatsappCloudConfig.graphBaseUrl}${path}`,
-    {
-      headers: { Authorization: `Bearer ${token}` },
-      params,
-      timeout: GRAPH_TIMEOUT_MS
-    }
-  );
-  return res.data;
-};
+): Promise<T> => metaGraphGet<T>(path, wacAuth(token), params);
 
-export const graphPost = async <T = Record<string, unknown>>(
+export const graphPost = <T = Record<string, unknown>>(
   path: string,
   token: string,
   data: object
-): Promise<T> => {
-  const res = await axios.post<T>(
-    `${whatsappCloudConfig.graphBaseUrl}${path}`,
-    data,
-    {
-      headers: { Authorization: `Bearer ${token}` },
-      timeout: GRAPH_TIMEOUT_MS
-    }
-  );
-  return res.data;
-};
+): Promise<T> => metaGraphPost<T>(path, wacAuth(token), data);
 
-export const verifyWACSignature = (req: Request): boolean => {
-  if (!whatsappCloudConfig.appSecret) return true;
-  const signature = req.headers["x-hub-signature-256"] as string | undefined;
-  if (!signature || !req.rawBody) return false;
-  const expected = `sha256=${crypto
-    .createHmac("sha256", whatsappCloudConfig.appSecret)
-    .update(req.rawBody)
-    .digest("hex")}`;
-  const exp = Buffer.from(expected);
-  const act = Buffer.from(signature);
-  if (exp.length !== act.length) return false;
-  return crypto.timingSafeEqual(exp, act);
-};
+export const verifyWACSignature = (req: Request): boolean =>
+  verifyMetaSignature(req, whatsappCloudConfig.appSecret);
 
 export const downloadWACMedia = async (
   mediaId: string,

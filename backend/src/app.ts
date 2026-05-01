@@ -14,6 +14,7 @@ import routes from "./routes";
 import { logger } from "./utils/logger";
 import InstagramWebhookController from "./controllers/InstagramWebhookController";
 import WhatsAppCloudWebhookController from "./controllers/WhatsAppCloudWebhookController";
+import { rawBodyMiddleware } from "./middleware/rawBody";
 
 Sentry.init({ dsn: process.env.SENTRY_DSN });
 
@@ -30,18 +31,6 @@ app.use(compression());
 
 // Webhook routes must be mounted BEFORE express.json()
 // so HMAC signature verification can access the raw request body.
-const rawBodyMiddleware = (
-  req: express.Request,
-  _res: express.Response,
-  next: express.NextFunction
-): void => {
-  req.rawBody = req.body;
-  req.body = (req.body as Buffer).length
-    ? JSON.parse((req.body as Buffer).toString())
-    : {};
-  next();
-};
-
 app.get("/instagram/webhook", InstagramWebhookController.verify);
 app.post(
   "/instagram/webhook",
