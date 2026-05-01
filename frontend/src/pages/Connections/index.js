@@ -438,7 +438,7 @@ const Connections = () => {
             Configurar
           </Button>
         )}
-        {isCloud && whatsApp.status === "CONNECTED" && (
+        {isCloud && whatsApp.status !== "WAITING_LOGIN" && whatsApp.status !== "OPENING" && (
           <Button
             size="small"
             variant="outlined"
