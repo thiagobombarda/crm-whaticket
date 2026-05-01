@@ -204,11 +204,28 @@ const WhatsAppCloudRegisterModal = ({ open, onClose, whatsAppId }) => {
 
       <DialogContent className={classes.dialogContent}>
         <div className={classes.infoBox}>
-          <p className={classes.infoTitle}>Como encontrar o PIN?</p>
+          <p className={classes.infoTitle}>Apenas para contas Tech Provider/SI</p>
           <p className={classes.infoText}>
-            Use o PIN de verificação em duas etapas configurado no WhatsApp Manager.
-            Caso ainda não tenha, acesse <strong>business.facebook.com</strong> → WhatsApp
-            → Configurações → Verificação em duas etapas e crie um PIN de 6 dígitos.
+            Use este registro se sua conta é <strong>Tech Provider</strong> ou <strong>Solution Integrator</strong>.
+            Informe o PIN de verificação em duas etapas configurado no WhatsApp Manager.
+          </p>
+        </div>
+
+        <div className={classes.infoBox} style={{ background: "rgba(99,102,241,0.05)", borderColor: "rgba(99,102,241,0.2)" }}>
+          <p className={classes.infoTitle}>Conta SMB (WhatsApp Business)?</p>
+          <p className={classes.infoText}>
+            O endpoint <code>/register</code> não funciona para SMB. O registro é automático
+            via WhatsApp Manager. Acesse{" "}
+            <a
+              href="https://business.facebook.com/wa/manage/phone-numbers"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: "#6366F1", fontWeight: 600 }}
+            >
+              business.facebook.com/wa/manage
+            </a>
+            , abra o número, complete a verificação SMS/voz e configure o PIN de 2FA.
+            Após isso, mensagens funcionam sem precisar registrar aqui.
           </p>
         </div>
 

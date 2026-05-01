@@ -154,6 +154,16 @@ const register = async (req: Request, res: Response): Promise<Response> => {
   } catch (err: any) {
     const meta = err?.response?.data?.error;
     logger.warn({ info: "WhatsApp Cloud: register failed", whatsappId, meta });
+
+    if (typeof meta?.message === "string" && meta.message.includes("SMB businesses")) {
+      return res.status(400).json({
+        error:
+          "Sua conta é SMB (WhatsApp Business). O endpoint /register não está disponível — o registro é automático via WhatsApp Manager. Acesse business.facebook.com/wa/manage, abra o número, complete a verificação SMS/voz e configure o PIN de 2FA. Depois disso, mensagens funcionam sem precisar registrar via API.",
+        code: meta?.code,
+        smb: true
+      });
+    }
+
     return res.status(400).json({
       error: meta?.message || "Falha ao registrar número. Verifique o PIN e tente novamente.",
       code: meta?.code

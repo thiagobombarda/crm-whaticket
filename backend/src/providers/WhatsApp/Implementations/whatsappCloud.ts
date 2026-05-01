@@ -92,7 +92,7 @@ const wrapGraphError = (err: any): never => {
   const message = err?.response?.data?.error?.message;
   if (code === META_ERROR_NOT_REGISTERED) {
     throw new AppError(
-      "Número não registrado na Cloud API. Acesse Conexões e clique em \"Registrar número\" para configurar o PIN.",
+      "Número não registrado na Cloud API. Se sua conta é SMB (WhatsApp Business), complete a verificação em business.facebook.com/wa/manage. Se for Tech Provider, clique em \"Registrar número\" em Conexões para configurar o PIN.",
       400
     );
   }
