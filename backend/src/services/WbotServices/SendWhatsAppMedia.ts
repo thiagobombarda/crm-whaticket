@@ -68,6 +68,7 @@ const SendWhatsAppMedia = async ({
       err,
       chatId: ticket?.contact?.number
     });
+    if (err instanceof AppError) throw err;
     throw new AppError("ERR_SENDING_WAPP_MSG");
   }
 };

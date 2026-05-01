@@ -3,6 +3,7 @@ import Whatsapp from "../models/Whatsapp";
 import { logger } from "../utils/logger";
 import {
   graphGet,
+  graphPost,
   parseWhatsAppCloudSession,
   WhatsAppCloudSession
 } from "../helpers/whatsappCloud";
@@ -121,4 +122,51 @@ const diagnose = async (req: Request, res: Response): Promise<Response> => {
   return res.json({ phoneNumberId: session.phoneNumberId, wabaId: session.wabaId, ...result });
 };
 
-export default { connect, disconnect, diagnose };
+// ─── POST /whatsapp-cloud/register ───────────────────────────────────────────
+// Registers the phone number with Cloud API (required before sending messages).
+// PIN is the 6-digit Two-step verification PIN configured in WhatsApp Manager.
+
+const register = async (req: Request, res: Response): Promise<Response> => {
+  const { whatsappId, pin } = req.body;
+
+  if (!whatsappId || !pin) {
+    return res.status(400).json({ error: "whatsappId e pin são obrigatórios" });
+  }
+  if (!/^\d{6}$/.test(String(pin))) {
+    return res.status(400).json({ error: "PIN deve conter exatamente 6 dígitos numéricos" });
+  }
+
+  const whatsapp = await Whatsapp.findByPk(Number(whatsappId));
+  if (!whatsapp || whatsapp.channel !== "whatsapp_cloud") {
+    return res.status(404).json({ error: "Conexão não encontrada" });
+  }
+
+  const session = parseWhatsAppCloudSession(whatsapp.session);
+  if (!session) {
+    return res.status(400).json({ error: "Conexão não configurada. Conecte primeiro." });
+  }
+
+  try {
+    await graphPost(`/${session.phoneNumberId}/register`, session.accessToken, {
+      messaging_product: "whatsapp",
+      pin: String(pin)
+    });
+  } catch (err: any) {
+    const meta = err?.response?.data?.error;
+    logger.warn({ info: "WhatsApp Cloud: register failed", whatsappId, meta });
+    return res.status(400).json({
+      error: meta?.message || "Falha ao registrar número. Verifique o PIN e tente novamente.",
+      code: meta?.code
+    });
+  }
+
+  logger.info({
+    info: "WhatsApp Cloud: phone registered",
+    whatsappId,
+    phoneNumberId: session.phoneNumberId
+  });
+
+  return res.json({ ok: true });
+};
+
+export default { connect, disconnect, diagnose, register };

@@ -19,6 +19,7 @@ import ConfirmationModal from "../../components/ConfirmationModal";
 import QrcodeModal from "../../components/QrcodeModal";
 import InstagramLoginModal from "../../components/InstagramLoginModal";
 import WhatsAppCloudConnectModal from "../../components/WhatsAppCloudConnectModal";
+import WhatsAppCloudRegisterModal from "../../components/WhatsAppCloudRegisterModal";
 import TableRowSkeleton from "../../components/TableRowSkeleton";
 import { i18n } from "../../translate/i18n";
 import { WhatsAppsContext } from "../../context/WhatsApp/WhatsAppsContext";
@@ -334,6 +335,7 @@ const Connections = () => {
   const [qrModalOpen, setQrModalOpen] = useState(false);
   const [igLoginModalOpen, setIgLoginModalOpen] = useState(false);
   const [wacConnectModalOpen, setWacConnectModalOpen] = useState(false);
+  const [wacRegisterModalOpen, setWacRegisterModalOpen] = useState(false);
   const [selectedWhatsApp, setSelectedWhatsApp] = useState(null);
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
   const confirmationModalInitialState = { action: "", title: "", message: "", whatsAppId: "", open: false };
@@ -358,6 +360,8 @@ const Connections = () => {
   const handleCloseIgLogin = useCallback(() => { setSelectedWhatsApp(null); setIgLoginModalOpen(false); }, []);
   const handleOpenWacConnect = (whatsApp) => { setSelectedWhatsApp(whatsApp); setWacConnectModalOpen(true); };
   const handleCloseWacConnect = useCallback(() => { setSelectedWhatsApp(null); setWacConnectModalOpen(false); }, []);
+  const handleOpenWacRegister = (whatsApp) => { setSelectedWhatsApp(whatsApp); setWacRegisterModalOpen(true); };
+  const handleCloseWacRegister = useCallback(() => { setSelectedWhatsApp(null); setWacRegisterModalOpen(false); }, []);
 
   const handleOpenConfirmationModal = (action, whatsAppId) => {
     setConfirmModalInfo(
@@ -434,6 +438,17 @@ const Connections = () => {
             Configurar
           </Button>
         )}
+        {isCloud && whatsApp.status === "CONNECTED" && (
+          <Button
+            size="small"
+            variant="outlined"
+            className={classes.smBtn}
+            style={{ borderColor: "#F97316", color: "#F97316" }}
+            onClick={() => handleOpenWacRegister(whatsApp)}
+          >
+            Registrar número
+          </Button>
+        )}
 
         {/* Shared buttons */}
         {(whatsApp.status === "CONNECTED" || whatsApp.status === "PAIRING" || whatsApp.status === "TIMEOUT") && (
@@ -460,6 +475,7 @@ const Connections = () => {
       <WhatsAppModal open={whatsAppModalOpen} onClose={handleCloseWhatsAppModal} whatsAppId={!qrModalOpen && selectedWhatsApp?.id} />
       <InstagramLoginModal open={igLoginModalOpen} onClose={handleCloseIgLogin} whatsAppId={selectedWhatsApp?.id} />
       <WhatsAppCloudConnectModal open={wacConnectModalOpen} onClose={handleCloseWacConnect} whatsAppId={selectedWhatsApp?.id} />
+      <WhatsAppCloudRegisterModal open={wacRegisterModalOpen} onClose={handleCloseWacRegister} whatsAppId={selectedWhatsApp?.id} />
 
       <div className={classes.pageHeader}>
         <h1 className={classes.pageTitle}>{i18n.t("connections.title")}</h1>

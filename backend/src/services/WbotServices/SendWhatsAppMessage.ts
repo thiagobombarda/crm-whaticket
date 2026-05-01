@@ -47,6 +47,7 @@ const SendWhatsAppMessage = async ({
     return sentMessage;
   } catch (err) {
     logger.error({ info: "Error sending WhatsApp message", err, chatId });
+    if (err instanceof AppError) throw err;
     throw new AppError("ERR_SENDING_WAPP_MSG");
   }
 };

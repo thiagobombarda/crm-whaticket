@@ -85,6 +85,21 @@ const logout = async (sessionId: number): Promise<void> => {
   }
 };
 
+const META_ERROR_NOT_REGISTERED = 133010;
+
+const wrapGraphError = (err: any): never => {
+  const code = err?.response?.data?.error?.code;
+  const message = err?.response?.data?.error?.message;
+  if (code === META_ERROR_NOT_REGISTERED) {
+    throw new AppError(
+      "Número não registrado na Cloud API. Acesse Conexões e clique em \"Registrar número\" para configurar o PIN.",
+      400
+    );
+  }
+  if (message) throw new AppError(`WhatsApp Cloud: ${message}`, 400);
+  throw err;
+};
+
 const sendMessage = async (
   sessionId: number,
   to: string,
@@ -98,7 +113,7 @@ const sendMessage = async (
     `/${s.phoneNumberId}/messages`,
     s.accessToken,
     { messaging_product: "whatsapp", to, type: "text", text: { body } }
-  );
+  ).catch(wrapGraphError);
 
   const messageId = result.messages?.[0]?.id;
   if (!messageId) throw new AppError("ERR_WAC_NO_MESSAGE_ID", 500);
@@ -146,7 +161,7 @@ const sendMedia = async (
       type: mediaType,
       [mediaType]: mediaPayload
     }
-  );
+  ).catch(wrapGraphError);
 
   const messageId = result.messages?.[0]?.id;
   if (!messageId) throw new AppError("ERR_WAC_NO_MESSAGE_ID", 500);

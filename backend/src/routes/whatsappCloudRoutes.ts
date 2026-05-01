@@ -19,5 +19,10 @@ whatsappCloudRoutes.get(
   isAuth,
   WhatsAppCloudController.diagnose
 );
+whatsappCloudRoutes.post(
+  "/whatsapp-cloud/register",
+  isAuth,
+  WhatsAppCloudController.register
+);
 
 export default whatsappCloudRoutes;
